@@ -1,22 +1,26 @@
 <script setup>
 // import { RouterLink, RouterView } from "vue-router";
+import navBar from "@/components/nav-bar.vue";
+import { onMounted } from "vue";
+import { useAuthStore } from "@/stores/auth-store";
+
+const authStore = useAuthStore();
+
+/* HOOKS
+ */
+onMounted(() => {
+  authStore.init();
+});
 </script>
 
 <template>
   <header>
-    <img
-      alt="Vue logo"
-      class="logo"
-      src="@/assets/logo.svg"
-      width="125"
-      height="125"
-    />
-
     <div class="wrapper">
-      <nav>
+      <nav-bar></nav-bar>
+      <!-- <nav>
         <RouterLink to="/">Home</RouterLink>
         <RouterLink to="/about">About</RouterLink>
-      </nav>
+      </nav> -->
     </div>
   </header>
 

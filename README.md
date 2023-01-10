@@ -2,12 +2,17 @@
 
 This template should help get you started developing with Vue 3 in Vite.
 
-
-## 
+##
 
 Vite
 Vue 3
 Pinia - state management system (store library for Vue)
+Persist plugin - for keep data in pinia after refresh (npm i pinia-plugin-persistedstate, and in setup 'persist:true')
+
+## how to create project like this
+
+npm init vue@latest - create new project (remmember - maybe you need better Node.js version)
+
 ## Recommended IDE Setup
 
 [VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur) + [TypeScript Vue Plugin (Volar)](https://marketplace.visualstudio.com/items?itemName=Vue.vscode-typescript-vue-plugin).
