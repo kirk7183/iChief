@@ -1,0 +1,40 @@
+.forEach ide na Collection
+.docs.map ide na Document
+
+
+const colRef = collection(db, "market-list", asd, "list-name");
+      const querySnapshot = await getDocs(colRef);
+      console.log("querySnapshot", querySnapshot);
+       this.lists = querySnapshot.docs.map((doc) => {
+         return doc.id;
+       });
+
+ // this.lists = querySnapshot.docs.map((doc) => {
+            //   console.log(doc);
+            //   return doc.id;
+            // });
+            //doc.id document dosent contain number, in this case actually contains a name of list
+            // if (each.doc.id == this.selectedList) {
+            //   console.log(each.doc.data());
+            //   console.log("each.doc.id", each.doc.id);
+            // this.lists.push(change.doc.data());
+            // }
+
+// this.lists = querySnapshot.docs.map((doc) => {
+            //   console.log(doc);
+            //   return doc.id;
+            // });
+            //doc.id document dosent contain number, in this case actually contains a name of list
+            // if (each.doc.id == this.selectedList) {
+            //   console.log(each.doc.data());
+            //   console.log("each.doc.id", each.doc.id);
+            // this.lists.push(change.doc.data());
+            // }
+            // if (change.type === "added") {
+            //   console.log("ADDED: ", change.doc.data());
+            //   console.log("ADDED ID!!!: ", change.doc.id);
+            //   this.lists.push(change.doc.id);
+            // console.log(doc);
+            // this.lists = change.docs.map((doc) => {
+            //   return doc.id;
+            // });

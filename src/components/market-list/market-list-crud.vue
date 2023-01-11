@@ -4,9 +4,9 @@
       {{ list }}
     </option>
   </select>
+  <button @click="createList">Create New List</button>
   <button @click="editListName">Edit List Name</button>
   <button @click="deleteList">Delete List</button>
-  <button @click="createList">Create New List</button>
 
   <ul>
     <div v-for="(singleItem, index) in items_fields" :key="index">
@@ -82,11 +82,11 @@ const createList = async () => {
   }
   market_list.createList(newListName);
 };
-const deleteList = () => {
-  market_list.deleteList();
-};
 const editListName = () => {
   market_list.editListName();
+};
+const deleteList = () => {
+  market_list.deleteList();
 };
 </script>
 

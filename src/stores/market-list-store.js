@@ -52,8 +52,9 @@ export const useMarketListStore = defineStore("market-list", {
         //make new document
         //setDoc (can change data and make new if there is none existing)
         await setDoc(docRef, docData).then(() => {
-          //update local list of documents
-          this.lists.push(newListName);
+          //add to local list of documents
+          this.lists.unshift(newListName);
+          this.lists.sort();
           //setup new document name as selectedList
           this.selectedList = newListName;
           alert('New list with name "' + newListName + '" is made !');
@@ -65,65 +66,40 @@ export const useMarketListStore = defineStore("market-list", {
 
     async fetchLists() {
       const asd = auth.userData.email;
-      const querySnapshot = await getDocs(
-        collection(db, "market-list", asd, "list-name")
-      );
-      console.log("querySnapshot", querySnapshot);
-      this.lists = querySnapshot.docs.map((doc) => {
-        return doc.id;
-        // console.log(doc);
+      const colRef = collection(db, "market-list", asd, "list-name");
+      //OVO MOZDA NE TREBA ZATO STO LISTA NECE DA BUDE NA JEDNOM ACCOUNTU, VEC SE POSLE LISTA SHARUJE, TAKO DA MISLIM DA NE TREBA OnSnapshot. Ovo treba za listu ali samo koja je sherovana
+      onSnapshot(colRef, (colSnapshot) => {
+        colSnapshot.docChanges().forEach(
+          (change) => {
+            //get index of element in 'lists' if exist
+            let index = this.lists.indexOf(change.doc.id);
+            // if data comes from server or local
+            if (change.type === "added") {
+              const source = change.doc.metadata.hasPendingWrites
+                ? "Local"
+                : "Server";
+              // if data comes from server
+              if (source === "Server") {
+                // if there is no document with that id in array "lists"
+                if (this.lists.indexOf(change.doc.id) === -1) {
+                  this.lists.unshift(change.doc.id);
+                  this.lists.sort();
+                }
+              }
+            }
+
+            if (change.type === "modified") {
+              // alert('')
+            }
+            if (change.type === "removed") {
+              this.lists.splice(index, 1);
+            }
+          },
+          (error) => {
+            console.log("onSnapshot error : ", error);
+          }
+        );
       });
-      // querySnapshot.forEach((doc) => {
-      //   console.log(doc.id);
-      //  this.list()
-      //   // this.lists = () => {
-      //   //   return doc.id;
-      //   // };
-      // });
-      // console.log("start fetchLists");
-      // let colRef = collection(
-      // db,
-      // "market-list",
-      // auth.userData.email,
-      // "list-name"
-      // );
-
-      // const colRef = await collection(
-      //   db,
-      //   "market-list",
-      //   auth.userData.email,
-      //   "list-name"
-      // );
-
-      // console.log("nesto");
-      // async () => {
-      //   await getDocs(colRef).then((response) => {
-      //     this.lists = () =>
-      //       response.docs.map((doc) => {
-      //         console.log("docs.map", doc.id);
-      //         return doc.id;
-      //       });
-      //   });
-      // };
-      // console.log("colcRef", colRef);
-      // let docSnap = await getDocs(colRef);
-      // // console.log("docSnap inside", getDocs);
-      // for (const doc of docSnap.docs) {
-      //   console.log(doc);
-      //   this.list.push(doc.id);
-
-      // this.lists = docSnap.docs.map((doc) => {
-      //   console.log("docs.map", doc.id);
-      //   return doc.id;
-      // });
-      // docSnap();
-      // }
-      // console.log(docSnap);
-      // this.lists = async () =>
-      //   docSnap.docs.map((doc) => {
-      //     console.log("docs.map", doc.id);
-      //     return doc.id;
-      //   });
     },
     async editListName() {
       if (this.selectedList != "") {
@@ -185,7 +161,7 @@ export const useMarketListStore = defineStore("market-list", {
           alert("Name of list already exists!");
         }
       } else {
-        alert("select list you want to see");
+        alert("select list you want to EDIT");
       }
     },
     async deleteList() {
@@ -206,49 +182,51 @@ export const useMarketListStore = defineStore("market-list", {
           this.lists.splice(index, 1);
           this.selectedList = "";
         });
+      } else {
+        alert("select list you want to DELETE");
       }
     },
     async fetchListFields() {
       //fetch fields from List name
-      console.log("fetch list fields");
-      const colRef = await collection(
-        db,
-        "market-list",
-        auth.userData.email,
-        "list-name"
-      );
+      // console.log("fetch list fields");
+      // const colRef = await collection(
+      //   db,
+      //   "market-list",
+      //   auth.userData.email,
+      //   "list-name"
+      // );
       //MAYBE I DONT NEED IT, BECAUSE ONLY USER WITH WHO IS SHARED LIST NEED THIS. He needs to see changes. But what if he made changes? do i  need to have onSnapshot for real time refresh?
-      onSnapshot(colRef, (colSnapshot) => {
-        colSnapshot.docChanges().forEach(
-          (change) => {
-            //doc.id document dosent contain number, in this case actually contains a name of list
-            // if (each.doc.id == this.selectedList) {
-            //   console.log(each.doc.data());
-            //   console.log("each.doc.id", each.doc.id);
-            //   this.list_fields = each.doc.data();
-            // }
-            if (change.type === "added") {
-              console.log("ADDED: ", change.doc.data());
-              this.lists.push(change.doc.data().name); //NE VALJA
-              // console.log(doc);
-            }
-            if (change.type === "modified") {
-              console.log("MODIFIED : ", change.doc.data());
-            }
-            if (change.type === "removed") {
-              console.log("REMOVED: ", change.doc.data());
-              // if (each.doc.id == this.selectedList) {
-              //   console.log(each.doc.data());
-              //   console.log("each.doc.id", each.doc.id);
-              //   this.list_fields = each.doc.data();
-              // }
-            }
-          },
-          (error) => {
-            console.log("onSnapshot error : ", error);
-          }
-        );
-      });
+      // onSnapshot(colRef, (colSnapshot) => {
+      //   colSnapshot.docChanges().forEach(
+      //     (change) => {
+      //       //doc.id document dosent contain number, in this case actually contains a name of list
+      //       // if (each.doc.id == this.selectedList) {
+      //       //   console.log(each.doc.data());
+      //       //   console.log("each.doc.id", each.doc.id);
+      //       //   this.list_fields = each.doc.data();
+      //       // }
+      //       if (change.type === "added") {
+      //         console.log("ADDED: ", change.doc.data());
+      //         this.lists.push(change.doc.data().name); //NE VALJA
+      //         // console.log(doc);
+      //       }
+      //       if (change.type === "modified") {
+      //         console.log("MODIFIED : ", change.doc.data());
+      //       }
+      //       if (change.type === "removed") {
+      //         console.log("REMOVED: ", change.doc.data());
+      //         // if (each.doc.id == this.selectedList) {
+      //         //   console.log(each.doc.data());
+      //         //   console.log("each.doc.id", each.doc.id);
+      //         //   this.list_fields = each.doc.data();
+      //         // }
+      //       }
+      //     },
+      //     (error) => {
+      //       console.log("onSnapshot error : ", error);
+      //     }
+      //   );
+      // });
     },
     async fetchItemsFields() {
       //fetch fields from List name
