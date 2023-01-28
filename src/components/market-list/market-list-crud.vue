@@ -4,9 +4,9 @@
       {{ list }}
     </option>
   </select>
-  <button @click="createList">Create New List</button>
-  <button @click="editListName">Edit List Name</button>
-  <button @click="deleteList">Delete List</button>
+  <button @click="createListBtn">Create New List</button>
+  <button @click="editListNameBtn">Edit List Name</button>
+  <button @click="deleteListBtn">Delete List</button>
 
   <ul>
     <div v-for="(singleItem, index) in items_fields" :key="index">
@@ -40,41 +40,67 @@
 <script setup>
 /* IMPORTS
  */
+// import { useAuthStore } from "@/stores/auth-store.js";
 import { useMarketListStore } from "@/stores/market-list-store.js";
-import { onMounted, watch } from "vue";
+import { watch } from "vue";
 import { storeToRefs } from "pinia";
+// const auth = useAuthStore();
 const market_list = useMarketListStore();
 const { selectedList, items_fields, lists } = storeToRefs(market_list);
 
 /* HOOKS
  */
+market_list.fetchLists();
+market_list.realTimeListeners();
 // onBeforeMount(() => market_list.fetchLists());
 // onActivated(async () => {
 //   await market_list.fetchLists();
 // });
-onMounted(async () => {
-  await market_list.fetchLists();
-});
+// onMounted(async () => {
+// await market_list.fetchLists();
+// market_list.realTimeListeners();
+// });
+// onMounted(() => {
+//   console.log("MARKET_LIST ", market_list);
+//   market_list.fetchLists();
+//   // market_list.realTimeListeners();
+// });
 watch(
   () => market_list.selectedList,
   () => {
     if (market_list.selectedList !== "") {
-      // Fetch the items for the newly selected list
+      // Fetch the list fields and items fields for the newly selected list
       market_list.fetchListFields();
       market_list.fetchItemsFields();
     }
     //when is this.selectedList empty (deleted or not selected)
     else {
       // market_list.items = [];
-      market_list.change_state("list_fields", []);
-      market_list.change_state("items_fields", []);
+      // market_list.change_state("list_fields", []);
+      // market_list.change_state("items_fields", []);
     }
   }
 );
+// watch(
+//   () => auth.userData.email,
+//   () => {
+//     {
+//       if (auth.userData.email !== null || auth.userData.email !== undefined) {
+//         console.log("nije prazno", auth.userData.email);
+//         market_list.fetchLists();
+//         // market_list.realTimeListeners();
+//       } else {
+//         //namestiti da isprazni "lists"
+//         // market_list.change_state("lists", []);
+//         console.log("PRAZNO JE");
+//       }
+//     }
+//   }
+// );
 
 /* METHODS
  */
-const createList = async () => {
+const createListBtn = async () => {
   // Display a form for the user to enter the list name
   const newListName = prompt("Enter the market list name");
   if (!newListName) {
@@ -82,10 +108,10 @@ const createList = async () => {
   }
   market_list.createList(newListName);
 };
-const editListName = () => {
+const editListNameBtn = () => {
   market_list.editListName();
 };
-const deleteList = () => {
+const deleteListBtn = () => {
   market_list.deleteList();
 };
 </script>

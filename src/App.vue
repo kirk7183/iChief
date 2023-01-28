@@ -1,18 +1,3 @@
-<script setup>
-// import { RouterLink, RouterView } from "vue-router";
-import navBar from "@/components/nav-bar.vue";
-import { onMounted } from "vue";
-import { useAuthStore } from "@/stores/auth-store";
-
-const authStore = useAuthStore();
-
-/* HOOKS
- */
-onMounted(() => {
-  authStore.init();
-});
-</script>
-
 <template>
   <header>
     <div class="wrapper">
@@ -26,6 +11,20 @@ onMounted(() => {
 
   <RouterView />
 </template>
+
+<script setup>
+// import { RouterLink, RouterView } from "vue-router";
+import navBar from "@/components/nav-bar.vue";
+// import { onBeforeMount } from "vue";
+
+import { useAuthStore } from "@/stores/auth-store";
+const authStore = useAuthStore();
+/* HOOKS
+ */
+// onBeforeMount(() => {
+authStore.init();
+// });
+</script>
 
 <style scoped>
 header {

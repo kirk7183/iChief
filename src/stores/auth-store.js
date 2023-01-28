@@ -1,7 +1,6 @@
 // import { ref, computed } from 'vue';
 import { defineStore } from "pinia";
-// import { useMarketListStore } from "@/stores/market-list-store.js";
-// const market_list = useMarketListStore();
+import { useMarketListStore } from "@/stores/market-list-store.js";
 import router from "@/router/index.js";
 import {
   auth,
@@ -10,6 +9,8 @@ import {
   onAuthStateChanged,
 } from "@/firebase/firebase.js";
 
+// const market_list = useMarketListStore();
+
 export const useAuthStore = defineStore("auth", {
   state: () => {
     return {
@@ -17,8 +18,8 @@ export const useAuthStore = defineStore("auth", {
       password: "",
       userData: {
         isLoggedIn: false,
-        // uid: "empty",
-        // email: "",
+        uid: "empty",
+        email: "",
       },
     };
   },
@@ -26,12 +27,14 @@ export const useAuthStore = defineStore("auth", {
     init() {
       onAuthStateChanged(auth, (user) => {
         if (user) {
+          console.log("USER AUTH STORE, ", user);
           this.userData.uid = user.uid;
           this.userData.email = user.email;
           this.userData.isLoggedIn = true;
           //ako si logovan i ukucas custom /login on ce odmah da te vrati na HOME zato sto ima v-model za username i password. U auth-store ce prvo da ocita prazne podatke iz inputa iz login-page.vue, pa ce onAuthStateChanged iz Init() koji se poziva iz app.vue da reaguje zbog promene podataka(proverice da li je korisnik logovan), pa ce opet da ocita logovanog korisnika i da pozove komandu ispod za redirect
           // router.replace({ name: "Home" });
         } else {
+          console.log("IZLOGOVAN SI");
           this.userData = {};
         }
       });
@@ -60,19 +63,19 @@ export const useAuthStore = defineStore("auth", {
     },
     async logout() {
       await signOut(auth).then(() => {
-        console.log("its logedOut");
-        // market_list.change_state("lists", []);
-        // marketList = lists: [],
-        // selectedList: "",
-        // list_fields: [],
-        // items_fields: [],
+        const market_list = useMarketListStore();
+        //empty lists when logout
+        market_list.change_state("lists", []);
+        market_list.change_state("selectedList", "");
+        market_list.change_state("list_fields", []);
+        market_list.change_state("items_fields", []);
       });
     },
   },
   getters: {
-    // isLoggedIn(state) {
-    //   console.log(this.userData.isLoggedIn);
-    //   return state.userData.isLoggedIn;
-    // },
+    isLoggedIn() {
+      console.log(this.userData.isLoggedIn);
+      return this.userData.isLoggedIn;
+    },
   },
 });

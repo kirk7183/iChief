@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 // import { computed } from "vue";
 // import { auth, onAuthStateChanged } from "@/firebase/firebase.js";
-// import { useAuthStore } from "@/stores/auth-store.js";
+import { useAuthStore } from "@/stores/auth-store";
 // import { storeToRefs } from "pinia";
 import HomeView from "../views/HomeView.vue";
 // import marketListView from "../views/market-list.vue";
@@ -94,26 +94,26 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 });
-// router.beforeEach(async (to, from, next) => {
-//   // const user = useUser();
-//   const authStore = useAuthStore();
-//   // await user.get();
-//   await authStore.isLoggedIn;
+router.beforeEach(async (to, from, next) => {
+  // const user = useUser();
+  const auth = useAuthStore();
+  // await user.get();
+  // const isLoggedIn = await auth.userData.isLoggedIn;
 
-//   console.log("authStore.isLoggedIn sada", authStore.isLoggedIn); // user is defined
+  console.log("authStore.isLoggedIn sada je: ", auth.isLoggedIn); // user is defined
 
-//   if (to.meta.requiresAuth && !authStore.isLoggedIn) {
-//     // next({ name: "Home" });
-//     // next(false);
-//     next(from);
-//     return;
-//   } // this will work
-//   // else if (!to.meta.requiresAuth) {
-//   next();
-//   return;
-//   // }
-//   // next();
-// });
+  if (to.meta.requiresAuth && !auth.isLoggedIn) {
+    // next({ name: "Home" });
+    // next(false);
+    next(from);
+    return;
+  } // this will work
+  // else if (!to.meta.requiresAuth) {
+  next();
+  return;
+  // }
+  // next();
+});
 // router.beforeEach(async (to, from, next) => {
 //   const authStore = await useAuthStore();
 //   const { userData } = await storeToRefs(authStore);

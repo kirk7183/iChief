@@ -38,3 +38,20 @@ const colRef = collection(db, "market-list", asd, "list-name");
             // this.lists = change.docs.map((doc) => {
             //   return doc.id;
             // });
+
+
+
+stari kom
+ // async fetchLists() {
+    //   console.log("auth ", auth);
+    //   const email = await auth.userData.email;
+    //   console.log("email is: ", email);
+    //   const colRef = collection(db, "market-list", email, "list-name");
+    //   const queryDocSnapshot = await getDocs(colRef);
+    //   console.log("queryDocSnapshot", queryDocSnapshot);
+    //   this.lists = queryDocSnapshot.docs.map((doc) => {
+    //     return doc.id;
+    //   });
+    //   // const colRef = await collection(db, "market-list");
+    //   console.log("colRef", colRef);
+    // },
