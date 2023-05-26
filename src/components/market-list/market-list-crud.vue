@@ -35,16 +35,17 @@
     </div>
     <!-- </div> -->
   </ul>
+  <!-- IMPORT COMPONENT -->
+  <Items-Crud />
 </template>
 
 <script setup>
 /* IMPORTS
  */
-// import { useAuthStore } from "@/stores/auth-store.js";
 import { useMarketListStore } from "@/stores/market-list-store.js";
 import { watch } from "vue";
 import { storeToRefs } from "pinia";
-// const auth = useAuthStore();
+import ItemsCrud from "@/components/market-list/items-crud.vue";
 const market_list = useMarketListStore();
 const { selectedList, items_fields, lists } = storeToRefs(market_list);
 
