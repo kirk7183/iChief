@@ -42,7 +42,7 @@ const unitList = reactive([
 /* METHODS
  */
 </script>
-<style>
+<style scoped>
 input,
 select {
   display: block;

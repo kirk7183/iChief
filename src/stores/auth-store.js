@@ -32,7 +32,7 @@ export const useAuthStore = defineStore("auth", {
           this.userData.email = user.email;
           this.userData.isLoggedIn = true;
           //ako si logovan i ukucas custom /login on ce odmah da te vrati na HOME zato sto ima v-model za username i password. U auth-store ce prvo da ocita prazne podatke iz inputa iz login-page.vue, pa ce onAuthStateChanged iz Init() koji se poziva iz app.vue da reaguje zbog promene podataka(proverice da li je korisnik logovan), pa ce opet da ocita logovanog korisnika i da pozove komandu ispod za redirect
-          // router.replace({ name: "Home" });
+          router.replace({ name: "Home" });
         } else {
           console.log("IZLOGOVAN SI");
           this.userData = {};
