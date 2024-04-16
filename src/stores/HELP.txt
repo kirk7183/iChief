@@ -55,3 +55,126 @@ stari kom
     //   // const colRef = await collection(db, "market-list");
     //   console.log("colRef", colRef);
     // },
+
+
+    async editListName() {
+      if (this.selectedList != "") {
+        // Display a form for the user to edit the list name
+        const newListName = prompt("Enter the new list name");
+        if (!newListName) {
+          return;
+        }
+        // Go trough array using .some and show, lower case them and check if there is same name exist in FireBase as user entered. Return true or false
+        let nameExist = await this.lists.some((list) => {
+          return list.toLowerCase() === newListName.toLowerCase();
+        });
+        // If not true (if it false), it means that there is no same name in Firestore as client entered in prompt
+        //then  make document with new name, copy all fields in old document and paste them in document with new name
+        if (!nameExist) {
+          const auth = useAuthStore();
+          const oldDocRef = doc(
+            db,
+            "market-list",
+            auth.userData.email,
+            "list-name",
+            this.selectedList
+          );
+          // make copy of old document name
+          const myOldDocData = await getDoc(oldDocRef);
+          //if old document name exist make new document(with name 'newListName') and insert old field objects
+          if (myOldDocData.exists()) {
+            const copyingDataFields = myOldDocData.data(); //old document fields
+            console.log('copyingDataFields', copyingDataFields);
+            //new document reference with new name
+            const newDocRef = doc(
+              db,
+              "market-list",
+              auth.userData.email,
+              "list-name",
+              newListName
+            );
+            console.log("COPYING DATA: ", copyingDataFields);
+            //make new document with name that client entered and insert old document fields in it
+            await setDoc(newDocRef, { ...copyingDataFields, name: newListName }).then(
+              () => {
+                alert(
+                  'List name changed from "' +
+                    this.selectedList +
+                    '" to "' +
+                    newListName +
+                    '"'
+                );
+
+                  // Get subcollections of the old document
+                const collections = await oldDocRef.listCollections();
+
+                //delete old document with field object data after new document with new name is made
+                // it will delete this.selectedList
+                this.deleteList().then(() => {
+                  //DONT FORGET THAT THIS IS NOT 'modified' in 'realTimeListeners', its making NEW and copying old data in it(with some changes) and then delete old data.
+                  //Main reaason for this is that we CANNOT CHANGE name (title) of 'documents' in Firebase. Funtion in Firebase foor this dont exist.
+
+                  //insert new list name locally
+                  // this.lists.push(newListName);
+
+                  //after old selectedList is deleted, we enter new list name we just made to selectedList
+                  this.selectedList = newListName;
+                  //because we have 'watch' on selectedList variable it will automaticly empty it when we delete document list from selectedList
+                  //after that this.list is empty so we need to fill it with old data
+                  this.list_fields = [{ ...copyingDataFields }];
+                });
+              }
+            );
+          }
+        } else {
+          alert("Name of list already exists!");
+        }
+      } else {
+        alert("select list you want to EDIT");
+      }
+    },
+    async deleteList() {
+      console.log("delete list");
+      let index = this.lists.indexOf(this.selectedList); //get index of 'selectedList' in array 'lists'
+      let selected = this.selectedList;
+      //if selectedList name (string) exist in 'lists' array
+      if (index !== -1) {
+        const auth = useAuthStore();
+        const myDocRef = doc(
+          db,
+          "market-list",
+          auth.userData.email,
+          "list-name",
+          this.selectedList
+        );
+        //delete that selectedList in Firebase and then this.realTimeListeners will in "removed" and remove 'list' in 'lists' and empty state for 'selectedList'.
+        await deleteDoc(myDocRef).then(() => {
+          alert('list "' + selected + '" has been deleted');
+        });
+      } else {
+        alert("select list you want to DELETE");
+      }
+    },
+
+    async deleteList() {
+      console.log("delete list");
+      let index = this.lists.indexOf(this.selectedList); //get index of 'selectedList' in array 'lists'
+      let selected = this.selectedList;
+      //if selectedList name (string) exist in 'lists' array
+      if (index !== -1) {
+        const auth = useAuthStore();
+        const myDocRef = await doc(
+          db,
+          "market-list",
+          auth.userData.email,
+          "list-name",
+          this.selectedList
+        );
+        //delete that selectedList in Firebase and then this.realTimeListeners will in "removed" and remove 'list' in 'lists' and empty state for 'selectedList'.
+        await deleteDoc(myDocRef).then(() => {
+          alert('list "' + selected + '" has been deleted');
+        });
+      } else {
+        alert("select list you want to DELETE");
+      }
+    },

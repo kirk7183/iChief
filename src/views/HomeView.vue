@@ -22,18 +22,18 @@
 
 
 <script setup>
-import { storeToRefs } from "pinia";
-import { useAuthStore } from "@/stores/auth-store";
-import router from "@/router/index.js";
-// import { useRouter } from "@/router/index.js";
-// const router = useRouter();
-const authStore = useAuthStore();
-const handleLogOut = async () => {
-  authStore.logout();
-};
-const toLoginPage = () => {
-  router.push({ path: "/login" });
-};
-const { userData } = storeToRefs(authStore);
+  import { storeToRefs } from "pinia";
+  import { useAuthStore } from "@/stores/auth-store";
+  import router from "@/router/index.js";
+  // import { useRouter } from "@/router/index.js";
+  // const router = useRouter();
+  const authStore = useAuthStore();
+  const handleLogOut = async () => {
+    authStore.logout();
+  };
+  const toLoginPage = () => {
+    router.push({ path: "/login" });
+  };
+  const { userData } = storeToRefs(authStore);
 </script>
 <style scoped></style>;

@@ -1,0 +1,9 @@
+
+2. u realTimeListeners da li je na serveru ili lokalno vrsena promena i nekako u boji da se obavesti 
+    da je vrsena promena na nekoj listi (pretpostavljam samo u listi koja je sharovana).
+3. Poruke da izbacuje kao u Tacni
+4. zasto fetchItemsFields ima opet onsnapshot
+    kada neko napravi novu listu, edituje naziv liste(samo kreator moze), obrise. da ispise kreatoru da je napravljeno, 
+    editovano obrisano a onome kome je sherovana lista da napise i ko je to uradio...npr email ili samo da pise da je kreator 
+    to uradio. Mada ako ima vise ljudi i neko ko nije kreator doda nesto mora da pise njegovo ime ili nick ili sta god + obrisao, dodao item itd.
+5. dodavanje stvari za kupovinu - iteme

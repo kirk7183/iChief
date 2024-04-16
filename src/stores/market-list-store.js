@@ -11,6 +11,7 @@ import {
   deleteDoc,
   onSnapshot,
 } from "@/firebase/firebase.js";
+import { writeBatch } from 'firebase/firestore';
 // const auth = useAuthStore();
 export const useMarketListStore = defineStore("market-list", {
   state: () => {
@@ -23,7 +24,7 @@ export const useMarketListStore = defineStore("market-list", {
   },
 
   actions: {
-    //recieve as argument a propertu in state and value
+    //recieve as argument a property in state and value
     change_state(state_property, value) {
       this[state_property] = value;
     },
@@ -35,7 +36,7 @@ export const useMarketListStore = defineStore("market-list", {
         const colRef = collection(db, "market-list", email, "list-name");
         const queryDocSnapshot = await getDocs(colRef);
         this.lists = queryDocSnapshot.docs.map((doc) => {
-          return doc.id;
+        return doc.id;  //list of documents (ex. grocery shop)
         });
         // this.sortingArray("lists");
       } catch (error) {
@@ -61,14 +62,14 @@ export const useMarketListStore = defineStore("market-list", {
               if (source === "Server") {
                 // if there is no document with that id in array "lists"
                 if (this.lists.indexOf(change.doc.id) === -1) {
-                  console.log("ITS SERVER!!!!!");
+                  console.log("ITS SERVER!!!!!"); //valjda ako neko drugi doda nesto a ja sam na toj listi
                   this.lists.unshift(change.doc.id);
                   this.sortingArray("lists");
-                }
+                } 
               }
               if (source === "Local") {
                 if (this.lists.indexOf(change.doc.id) === -1) {
-                  console.log("ITS LOCAL!!!!!");
+                  console.log("ITS LOCAL!!!!!"); //ako ja dodam nesto na nekoj listi nesto
                   this.lists.unshift(change.doc.id);
                   this.sortingArray("lists");
                 }
@@ -93,7 +94,7 @@ export const useMarketListStore = defineStore("market-list", {
     },
 
     async createList(newListName) {
-      // Go trough array using .some and show, lower case them and check if there is same name exist in FB as user entered. Return true or false
+      // Go trough array using .some and show, lower case them and check if there is same name exist in Firebase as user entered. Return true or false
       let nameExist = await this.lists.some((list) => {
         return list.toLowerCase() === newListName.toLowerCase();
       });
@@ -121,97 +122,131 @@ export const useMarketListStore = defineStore("market-list", {
         await setDoc(docRef, docData).then(() => {
           this.selectedList = newListName;
           //NOTHING - 'realTimeListeners' will do the rest
-          // alert('New list with name "' + newListName + '" is made !');
         });
       } else {
         alert("Name of list already exists!");
       }
     },
 
-    async editListName() {
-      if (this.selectedList != "") {
-        // Display a form for the user to edit the list name
+    async editListName(arg) {
+      if (this.selectedList !== "") {
         const newListName = prompt("Enter the new list name");
         if (!newListName) {
           return;
         }
-        // Go trough array using .some and show, lower case them and check if there is same name exist in FireBase as user entered. Return true or false
-        let nameExist = await this.lists.some((list) => {
-          return list.toLowerCase() === newListName.toLowerCase();
-        });
-        // If not true (if it false), it means that there is no same name in Firestore as client entered in prompt
-        //then  make document with new name, copy all fields in old document and paste them in document with new name
+    
+        const nameExist = this.lists.some((list) => list.toLowerCase() === newListName.toLowerCase());
+    
         if (!nameExist) {
-          const auth = useAuthStore();
-          const oldDocRef = doc(
-            db,
-            "market-list",
-            auth.userData.email,
-            "list-name",
-            this.selectedList
-          );
-          // make copy of old data()
-          const myDoc = await getDoc(oldDocRef);
-          //if old data exist make new document and insert field object with old data
-          if (myDoc.exists()) {
-            const copyingData = myDoc.data();
-            const newDocRef = doc(
-              db,
-              "market-list",
-              auth.userData.email,
-              "list-name",
-              newListName
-            );
-            console.log("COPYING DATA: ", copyingData);
-            //make new document with name client entered and insert in it the old data
-            await setDoc(newDocRef, { ...copyingData, name: newListName }).then(
-              () => {
-                alert(
-                  'List name changed from "' +
-                    this.selectedList +
-                    '" to "' +
-                    newListName +
-                    '"'
-                );
-                //delete old document with field object data after new document with new name is made
-                this.deleteList(this.selectedList).then(() => {
-                  //DONT FORGET THAT THIS IS NOT 'modified' in 'realTimeListeners', its making NEW and copying old data in it(with some changes) and then delete old data.
-                  //Main reaason for this is that we CANNOT CHANGE name (title) of 'documents' in Firebase.
+          try {
+            const auth = useAuthStore(); // Assuming you have an auth store for user authentication
+            const oldDocRef = await doc(db, "market-list", auth.userData.email, "list-name", this.selectedList);
+            const myOldDocData = await getDoc(oldDocRef);
+    
+            if (myOldDocData.exists()) {
+              const copyingDataFields = myOldDocData.data(); //old doument fields
+              const newDocRef = doc(db, "market-list", auth.userData.email, "list-name", newListName);
+    
+              await setDoc(newDocRef, { ...copyingDataFields, name: newListName });
+              console.log('setDoc');
 
-                  //insert new list name locally
-                  // this.lists.push(newListName);
-
-                  //after old selectedList is deleted, we enter new list name we just made to selectedList
-                  this.selectedList = newListName;
-                  //because we have 'watch' on selectedList variable it will automaticly empty it when we delete document list from selectedList
-                  //after that this.list is empty so we need to fill it with old data
-                  this.list_fields = [{ ...copyingData }];
-                });
+              await this.copySubcollections(oldDocRef, newDocRef);
+              console.log('this.copySubcollections');
+              
+              if (arg === 'edit'){
+                await this.deleteList(); // Using an action to delete the old list after copying
+                console.log('this.deleteList');
               }
-            );
+    
+              this.selectedList = newListName; // Using an action to set the selected list to the new name
+              console.log('this.selectedList');
+    
+              this.list_fields = [{ ...copyingDataFields }]; // Using an action to set the list fields
+              console.log('this.list_fields');
+    
+              alert('List name changed successfully');
+            }
+          } catch (error) {
+            console.error("Error editing list name:", error);
           }
         } else {
           alert("Name of list already exists!");
         }
       } else {
-        alert("select list you want to EDIT");
+        alert("Select a list you want to edit");
       }
     },
+    
+    //for copy sub-collection from old to new document
+    async copySubcollections(oldDocRef, newDocRef) {
+      console.log('before old collection');
+      const oldCollectionRef = collection(oldDocRef, 'items');
+      console.log('before new collection');
+      const newCollectionRef = collection(newDocRef, 'items');
+      console.log('after new collection', newCollectionRef);
+    
+      console.log('before documents');
+      const documents = await getDocs(oldCollectionRef);
+    
+      console.log('before batch');
+      // Use batch writes for better performance
+      const batch = writeBatch(db);
+    
+      console.log('before forEach');
+      documents.forEach((singledoc) => {
+        console.log('doc.id', singledoc.id);
+        console.log('doc', singledoc);
+        const docId = singledoc.id
+        const data = singledoc.data();
+        console.log('data', data);
+        const newDocRefWithId = doc(newCollectionRef, docId);
+        console.log('before batch.set');
+        batch.set(newDocRefWithId, data);
+        console.log('after batch.set');
+      });
+    
+      console.log('before return');
+      // Commit the batch write
+      return batch.commit();
+    },
+
     async deleteList() {
       console.log("delete list");
-      let index = this.lists.indexOf(this.selectedList);
+      let index = this.lists.indexOf(this.selectedList); //get index of 'selectedList' in array 'lists'
       let selected = this.selectedList;
       //if selectedList name (string) exist in 'lists' array
       if (index !== -1) {
         const auth = useAuthStore();
-        const myDocRef = doc(
+        
+        const myColRef = await collection(
           db,
           "market-list",
           auth.userData.email,
           "list-name",
-          this.selectedList
+          this.selectedList,
+          "items"
         );
+        console.log('myColRef', myColRef);
+        //delete collection documents (ex. MOHfdwtzHckeLB1841K3 random ID) and then there is no need to delete 
+        //collection (ex. items) that contain that documents, because Firebase automaticly delete collection if there 
+        //is no documents in it. 
+        console.log("before querySnapshot");
+        const querySnapshot = await getDocs(myColRef);
+        // Delete each document in the collection
+        querySnapshot.forEach(async (docum) => {
+          await deleteDoc(docum.ref);
+        });
+       
+        //delete document (ex. Grocery shopping, fishing etc.)
         //delete that selectedList in Firebase and then this.realTimeListeners will in "removed" and remove 'list' in 'lists' and empty state for 'selectedList'.
+        const myDocRef = await doc(
+          db,
+          "market-list",
+          auth.userData.email,
+          "list-name",
+          this.selectedList,
+        );
+        console.log("before await deleteDoc(myDocRef)");
         await deleteDoc(myDocRef).then(() => {
           alert('list "' + selected + '" has been deleted');
         });
@@ -263,7 +298,7 @@ export const useMarketListStore = defineStore("market-list", {
     },
 
     async fetchItemsFields() {
-      //fetch fields from List name
+      //fetch item fields from selected List name - when  user select list, 
       console.log("fetch item fields");
       const auth = useAuthStore();
       const colRef = await collection(
@@ -274,18 +309,21 @@ export const useMarketListStore = defineStore("market-list", {
         this.selectedList,
         "items"
       );
-      //MAYBE I DONT NEED IT, BECAUSE ONLY USER WITH WHO IS SHARED LIST NEED THIS. He needs to see changes. But what if he made changes? do i  need to have onSnapshot for real time refresh?
-      onSnapshot(colRef, (colSnapshot) => {
-        this.items_fields = [];
-        colSnapshot.docChanges().forEach((each) => {
-          //doc.id document dosent contain number, in this case actually contains a name of list
-          // if (each.doc.id == this.selectedList) {
-          console.log("each.doc.id", each.doc);
-          console.log(each.doc.data());
-          this.items_fields.push(each.doc.data());
-          // }
+      //MAYBE I DONT NEED IT, BECAUSE ONLY USER WITH WHO IS SHARED LIST NEED THIS. He needs to see changes. 
+      //But what if he made changes? do i  need to have onSnapshot for real time refresh?
+      if (colRef){
+        onSnapshot(colRef, (colSnapshot) => {
+          this.items_fields = [];
+          colSnapshot.docChanges().forEach((each) => {
+            //doc.id document dosent contain number, in this case actually contains a name of list
+            // if (each.doc.id == this.selectedList) {
+            console.log("each.doc.id", each.doc);
+            console.log(each.doc.data());
+            this.items_fields.push(each.doc.data());
+            // }
+          });
         });
-      });
+      }
     },
     sortingArray(arrayName) {
       //accept name of array in "data" and then sort array to be "1,2,3,4,5,6,7,8,9,10,11,12" instead "12,11,10,1,2,3..."
