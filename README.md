@@ -7,7 +7,7 @@ This template should help get you started developing with Vue 3 in Vite.
 Vite
 Vue 3
 Pinia - state management system (store library for Vue)
-Persist plugin - for keep data in pinia after refresh (npm i pinia-plugin-persistedstate, and in setup 'persist:true')
+Persist plugin - for keep data in pinia after refresh (npm i pinia-plugin-persistedstate, and in setup store 'persist:true'  - (example: market-list-store.js))
 
 ## how to create project like this
 

@@ -2,9 +2,7 @@
 import { defineStore } from "pinia";
 import { useMarketListStore } from "@/stores/market-list-store.js";
 import router from "@/router/index.js";
-import {
-  auth,
-  signInWithEmailAndPassword,
+import {  auth,  signInWithEmailAndPassword, 
   signOut,
   onAuthStateChanged,
 } from "@/firebase/firebase.js";
