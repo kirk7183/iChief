@@ -1,5 +1,6 @@
 <template>
   <div>
+    
     <h1>Welcome to the Cooking Book!</h1>
     <div v-if="Object.keys(userData).length">
       <p>You are logged in as: {{ userData.email }}</p>
