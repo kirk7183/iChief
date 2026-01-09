@@ -97,6 +97,14 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   // const user = useUser();
   const auth = useAuthStore();
+  // Ensure the auth store has completed its initial check before gating routes
+  if (auth && typeof auth.waitForAuth === "function") {
+    try {
+      await auth.waitForAuth();
+    } catch (e) {
+      console.warn("waitForAuth error", e);
+    }
+  }
   // await user.get();
   // const isLoggedIn = await auth.userData.isLoggedIn;
 

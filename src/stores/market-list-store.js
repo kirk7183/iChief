@@ -10,14 +10,25 @@ import {
   setDoc,
   deleteDoc,
   onSnapshot,
+  addDoc,
+  updateDoc,
 } from "@/firebase/firebase.js";
+import { serverTimestamp } from "@/firebase/firebase.js";
 import { writeBatch } from 'firebase/firestore';
-// const auth = useAuthStore();
+
+// Generate UUID
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 export const useMarketListStore = defineStore("market-list", {
   state: () => {
     return {
-      lists: [],
-      selectedList: "",
+      lists: [], // Now stores: { id: "uuid", name: "Kupovnja" }
+      selectedList: "", // Now stores only UUID
       list_fields: [],
       items_fields: [],
     };
@@ -33,12 +44,14 @@ export const useMarketListStore = defineStore("market-list", {
       const auth = useAuthStore();
       try {
         const email = await auth.userData.email;
-        const colRef = collection(db, "market-list", email, "list-name");
+        const colRef = collection(db, "market-list", email, "lists");
         const queryDocSnapshot = await getDocs(colRef);
         this.lists = queryDocSnapshot.docs.map((doc) => {
-        return doc.id;  //list of documents (ex. grocery shop)
+          return {
+            id: doc.id,
+            name: doc.data().name
+          };
         });
-        // this.sortingArray("lists");
       } catch (error) {
         console.log(error);
       }
@@ -47,42 +60,47 @@ export const useMarketListStore = defineStore("market-list", {
     realTimeListeners() {
       const auth = useAuthStore();
       const email = auth.userData.email;
-      const colRef = collection(db, "market-list", email, "list-name");
+      const colRef = collection(db, "market-list", email, "lists");
       onSnapshot(colRef, (colSnapshot) => {
         colSnapshot.docChanges().forEach(
           (change) => {
             //get index of element in 'lists' if exist
-            let index = this.lists.indexOf(change.doc.id);
+            let index = this.lists.findIndex(list => list.id === change.doc.id);
             // if data comes from server or local when its added
             if (change.type === "added") {
               const source = change.doc.metadata.hasPendingWrites
                 ? "Local"
                 : "Server";
-              // if data comes from server
               if (source === "Server") {
-                // if there is no document with that id in array "lists"
-                if (this.lists.indexOf(change.doc.id) === -1) {
-                  console.log("ITS SERVER!!!!!"); //valjda ako neko drugi doda nesto a ja sam na toj listi
-                  this.lists.unshift(change.doc.id);
+                if (!this.lists.find(list => list.id === change.doc.id)) {
+                  console.log("ITS SERVER!!!!!");
+                  this.lists.unshift({
+                    id: change.doc.id,
+                    name: change.doc.data().name
+                  });
                   this.sortingArray("lists");
                 } 
               }
               if (source === "Local") {
-                if (this.lists.indexOf(change.doc.id) === -1) {
-                  console.log("ITS LOCAL!!!!!"); //ako ja dodam nesto na nekoj listi nesto
-                  this.lists.unshift(change.doc.id);
+                if (!this.lists.find(list => list.id === change.doc.id)) {
+                  console.log("ITS LOCAL!!!!!");
+                  this.lists.unshift({
+                    id: change.doc.id,
+                    name: change.doc.data().name
+                  });
                   this.sortingArray("lists");
                 }
               }
             }
             if (change.type === "modified") {
-              // console.log("doc id: ", change.doc.id);
-              // console.log("change:  ", change);
-              // this.lists.push(change.doc.id);
-              // this.selectedList = change.doc.id;
+              if (index !== -1) {
+                this.lists[index].name = change.doc.data().name;
+              }
             }
             if (change.type === "removed") {
-              this.lists.splice(index, 1);
+              if (index !== -1) {
+                this.lists.splice(index, 1);
+              }
               this.selectedList = "";
             }
           },
@@ -94,34 +112,29 @@ export const useMarketListStore = defineStore("market-list", {
     },
 
     async createList(newListName) {
-      // Go trough array using .some and show, lower case them and check if there is same name exist in Firebase as user entered. Return true or false
+      // Check if list name exists
       let nameExist = await this.lists.some((list) => {
-        return list.toLowerCase() === newListName.toLowerCase();
+        return list.name.toLowerCase() === newListName.toLowerCase();
       });
-      // If not true (if it false), it means that there is no the same name in FireBase as client entered in prompt
-      //then make document with new name, and insert field object "name:""
+      
       if (!nameExist) {
-        // Create new data field
+        const listId = generateUUID();
         let docData = {
           name: newListName.trim(),
-          sharedWith: [], //send and confirmed
-          shareSend: [], //send but not confirmed
+          sharedWith: [],
+          shareSend: [],
           timestamp: new Date(),
         };
         const auth = useAuthStore();
-        // select collection and set new doc name
         const docRef = doc(
           db,
           "market-list",
           auth.userData.email,
-          "list-name",
-          newListName
+          "lists",
+          listId
         );
-        //make new document
-        //setDoc (can change data and make new if there is none existing)
         await setDoc(docRef, docData).then(() => {
-          this.selectedList = newListName;
-          //NOTHING - 'realTimeListeners' will do the rest
+          this.selectedList = listId;
         });
       } else {
         alert("Name of list already exists!");
@@ -135,37 +148,20 @@ export const useMarketListStore = defineStore("market-list", {
           return;
         }
     
-        const nameExist = this.lists.some((list) => list.toLowerCase() === newListName.toLowerCase());
+        const nameExist = this.lists.some((list) => list.name.toLowerCase() === newListName.toLowerCase());
     
         if (!nameExist) {
           try {
-            const auth = useAuthStore(); // Assuming you have an auth store for user authentication
-            const oldDocRef = await doc(db, "market-list", auth.userData.email, "list-name", this.selectedList);
-            const myOldDocData = await getDoc(oldDocRef);
-    
-            if (myOldDocData.exists()) {
-              const copyingDataFields = myOldDocData.data(); //old doument fields
-              const newDocRef = doc(db, "market-list", auth.userData.email, "list-name", newListName);
-    
-              await setDoc(newDocRef, { ...copyingDataFields, name: newListName });
-              console.log('setDoc');
-
-              await this.copySubcollections(oldDocRef, newDocRef);
-              console.log('this.copySubcollections');
-              
-              if (arg === 'edit'){
-                await this.deleteList(); // Using an action to delete the old list after copying
-                console.log('this.deleteList');
-              }
-    
-              this.selectedList = newListName; // Using an action to set the selected list to the new name
-              console.log('this.selectedList');
-    
-              this.list_fields = [{ ...copyingDataFields }]; // Using an action to set the list fields
-              console.log('this.list_fields');
-    
-              alert('List name changed successfully');
-            }
+            const auth = useAuthStore();
+            const docRef = doc(db, "market-list", auth.userData.email, "lists", this.selectedList);
+            
+            // Simply update the name field
+            await updateDoc(docRef, {
+              name: newListName.trim()
+            });
+            
+            console.log('List name updated successfully');
+            alert('List name changed successfully');
           } catch (error) {
             console.error("Error editing list name:", error);
           }
@@ -176,82 +172,127 @@ export const useMarketListStore = defineStore("market-list", {
         alert("Select a list you want to edit");
       }
     },
+
+    async copyList(newListName) {
+      if (!this.selectedList) {
+        alert("Select a list you want to copy");
+        return;
+      }
+
+      // Check if name exists
+      const nameExist = this.lists.some((list) => list.name.toLowerCase() === newListName.toLowerCase());
+      if (nameExist) {
+        alert("Name of list already exists!");
+        return;
+      }
+
+      try {
+        const auth = useAuthStore();
+        const oldDocRef = doc(db, "market-list", auth.userData.email, "lists", this.selectedList);
+        const oldSnap = await getDoc(oldDocRef);
+        if (!oldSnap.exists()) {
+          alert("Original list not found");
+          return;
+        }
+
+        const copyingDataFields = oldSnap.data();
+
+        // create new list doc
+        const newId = generateUUID();
+        const newDocRef = doc(db, "market-list", auth.userData.email, "lists", newId);
+        await setDoc(newDocRef, { ...copyingDataFields, name: newListName.trim(), timestamp: new Date() });
+
+        // copy items subcollection using batch
+        const oldItemsCol = collection(oldDocRef, "items");
+        const newItemsCol = collection(newDocRef, "items");
+        const documents = await getDocs(oldItemsCol);
+        const batch = writeBatch(db);
+        documents.forEach((d) => {
+          const newItemRef = doc(newItemsCol, d.id);
+          batch.set(newItemRef, d.data());
+        });
+        await batch.commit();
+
+        // refresh lists from server and select new list
+        await this.fetchLists();
+        this.selectedList = newId;
+        // fetch items for the new list
+        await this.fetchItemsFields();
+
+        alert(`List copied as "${newListName.trim()}"`);
+      } catch (error) {
+        console.error("Error copying list:", error);
+        alert("Error copying list!");
+      }
+    },
     
-    //for copy sub-collection from old to new document
+    //for copy sub-collection from old to new document (DEPRECATED - no longer needed with UUID structure)
     async copySubcollections(oldDocRef, newDocRef) {
-      console.log('before old collection');
-      const oldCollectionRef = collection(oldDocRef, 'items');
-      console.log('before new collection');
-      const newCollectionRef = collection(newDocRef, 'items');
-      console.log('after new collection', newCollectionRef);
-    
-      console.log('before documents');
-      const documents = await getDocs(oldCollectionRef);
-    
-      console.log('before batch');
-      // Use batch writes for better performance
-      const batch = writeBatch(db);
-    
-      console.log('before forEach');
-      documents.forEach((singledoc) => {
-        console.log('doc.id', singledoc.id);
-        console.log('doc', singledoc);
-        const docId = singledoc.id
-        const data = singledoc.data();
-        console.log('data', data);
-        const newDocRefWithId = doc(newCollectionRef, docId);
-        console.log('before batch.set');
-        batch.set(newDocRefWithId, data);
-        console.log('after batch.set');
-      });
-    
-      console.log('before return');
-      // Commit the batch write
-      return batch.commit();
+      console.log('Copying subcollections (deprecated)');
+      // This method is no longer needed since we use updateDoc instead of creating new documents
     },
 
-    async deleteList() {
+    async deleteList(listId = null) {
       console.log("delete list");
-      let index = this.lists.indexOf(this.selectedList); //get index of 'selectedList' in array 'lists'
-      let selected = this.selectedList;
-      //if selectedList name (string) exist in 'lists' array
-      if (index !== -1) {
+      const listToDelete = listId || this.selectedList;
+      
+      // Check if list is selected
+      if (!listToDelete) {
+        alert("Select a list you want to DELETE");
+        return;
+      }
+      
+      // Find list index and name
+      let index = this.lists.findIndex(list => list.id === listToDelete);
+      if (index === -1) {
+        alert("List not found");
+        return;
+      }
+      
+      const listName = this.lists[index].name;
+      
+      // Ask for confirmation
+      const confirm = window.confirm(`Are you sure you want to delete list "${listName}" and all its items?`);
+      if (!confirm) {
+        return;
+      }
+      
+      try {
         const auth = useAuthStore();
         
-        const myColRef = await collection(
+        // Delete all items in the list
+        const itemsColRef = collection(
           db,
           "market-list",
           auth.userData.email,
-          "list-name",
-          this.selectedList,
+          "lists",
+          listToDelete,
           "items"
         );
-        console.log('myColRef', myColRef);
-        //delete collection documents (ex. MOHfdwtzHckeLB1841K3 random ID) and then there is no need to delete 
-        //collection (ex. items) that contain that documents, because Firebase automaticly delete collection if there 
-        //is no documents in it. 
-        console.log("before querySnapshot");
-        const querySnapshot = await getDocs(myColRef);
-        // Delete each document in the collection
-        querySnapshot.forEach(async (docum) => {
-          await deleteDoc(docum.ref);
-        });
-       
-        //delete document (ex. Grocery shopping, fishing etc.)
-        //delete that selectedList in Firebase and then this.realTimeListeners will in "removed" and remove 'list' in 'lists' and empty state for 'selectedList'.
-        const myDocRef = await doc(
+        
+        const querySnapshot = await getDocs(itemsColRef);
+        
+        // Delete each item document
+        const deletePromises = querySnapshot.docs.map(docum => deleteDoc(docum.ref));
+        await Promise.all(deletePromises);
+        console.log("All items deleted");
+        
+        // Delete the list document itself
+        const listDocRef = doc(
           db,
           "market-list",
           auth.userData.email,
-          "list-name",
-          this.selectedList,
+          "lists",
+          listToDelete,
         );
-        console.log("before await deleteDoc(myDocRef)");
-        await deleteDoc(myDocRef).then(() => {
-          alert('list "' + selected + '" has been deleted');
-        });
-      } else {
-        alert("select list you want to DELETE");
+        
+        await deleteDoc(listDocRef);
+        console.log('List deleted successfully');
+        alert(`List "${listName}" has been deleted`);
+        
+      } catch (error) {
+        console.error("Error deleting list:", error);
+        alert("Error deleting list!");
       }
     },
     async fetchListFields() {
@@ -299,75 +340,161 @@ export const useMarketListStore = defineStore("market-list", {
 
     async fetchItemsFields() {
       //fetch item fields from selected List name - when  user select list, 
-      console.log("fetch item fields");
+      console.log("fetch item fields for list:", this.selectedList);
       const auth = useAuthStore();
       const colRef = await collection(
         db,
         "market-list",
         auth.userData.email,
-        "list-name",
+        "lists",
         this.selectedList,
         "items"
       );
-      //MAYBE I DONT NEED IT, BECAUSE ONLY USER WITH WHO IS SHARED LIST NEED THIS. He needs to see changes. 
-      //But what if he made changes? do i  need to have onSnapshot for real time refresh?
       if (colRef){
         onSnapshot(colRef, (colSnapshot) => {
           this.items_fields = [];
-          colSnapshot.docChanges().forEach((each) => {
-            //doc.id document dosent contain number, in this case actually contains a name of list
-            // if (each.doc.id == this.selectedList) {
-            console.log("each.doc.id", each.doc);
-            console.log(each.doc.data());
-            this.items_fields.push(each.doc.data());
-            // }
+          colSnapshot.forEach((each) => {
+            const itemData = {
+              id: each.id,
+              ...each.data()
+            };
+            console.log("Loading item:", itemData);
+            this.items_fields.push(itemData);
           });
         });
       }
     },
+
+    async saveItem(itemData) {
+      try {
+        const auth = useAuthStore();
+        const itemsColRef = collection(
+          db,
+          "market-list",
+          auth.userData.email,
+          "lists",
+          this.selectedList,
+          "items"
+        );
+        
+        await addDoc(itemsColRef, itemData);
+        console.log("v");
+      } catch (error) {
+        console.error("Error saving item:", error);
+        alert("Error saving item!");
+      }
+    },
+
+    async updateItemCompletion(itemId, completed) {
+      try {
+        if (!this.selectedList) {
+          alert('Please select a list first');
+          return;
+        }
+        const auth = useAuthStore();
+        const itemDocRef = doc(
+          db,
+          "market-list",
+          auth.userData.email,
+          "lists",
+          this.selectedList,
+          "items",
+          itemId
+        );
+        await updateDoc(itemDocRef, { 
+          completed: completed,
+          updatedBy: auth.userData.email || auth.userData.uid,
+          updatedAt: serverTimestamp()
+        });
+        console.log('Item completion updated', itemId, completed);
+      } catch (error) {
+        console.error('Error updating item completion:', error);
+        throw error;
+      }
+    },
+
+    async deleteItem(itemOrId) {
+      try {
+        // Check if list is selected
+        if (!this.selectedList) {
+          alert("Please select a list first");
+          return;
+        }
+
+        const auth = useAuthStore();
+
+        // Determine itemId: accept either id string or full item object
+        let itemId = null;
+        if (typeof itemOrId === "string") {
+          itemId = itemOrId;
+        } else if (typeof itemOrId === "object" && itemOrId !== null) {
+          // Try to use provided id
+          if (itemOrId.id) {
+            itemId = itemOrId.id;
+          } else {
+            // Find the document by matching fields (name + timestamp fallback)
+            const itemsColRef = collection(
+              db,
+              "market-list",
+              auth.userData.email,
+              "lists",
+              this.selectedList,
+              "items"
+            );
+            const querySnapshot = await getDocs(itemsColRef);
+            const found = querySnapshot.docs.find((d) => {
+              const data = d.data();
+              if (itemOrId.name && data.name !== itemOrId.name) return false;
+              // compare timestamps if present
+              if (data.timestamp && itemOrId.timestamp && data.timestamp.seconds && itemOrId.timestamp.seconds) {
+                return data.timestamp.seconds === itemOrId.timestamp.seconds;
+              }
+              // fallback compare some fields
+              return (
+                data.info === itemOrId.info &&
+                data.buyer === itemOrId.buyer &&
+                String(data.amount) === String(itemOrId.amount)
+              );
+            });
+            if (found) itemId = found.id;
+          }
+        }
+
+        if (!itemId) {
+          alert("Invalid item ID (could not locate document)");
+          return;
+        }
+
+        // Ask for confirmation
+        const confirm = window.confirm("Are you sure you want to delete this item?");
+        if (!confirm) {
+          return;
+        }
+
+        const itemDocRef = doc(
+          db,
+          "market-list",
+          auth.userData.email,
+          "lists",
+          this.selectedList,
+          "items",
+          itemId
+        );
+
+        await deleteDoc(itemDocRef);
+        console.log("Item deleted successfully");
+      } catch (error) {
+        console.error("Error deleting item:", error);
+        alert("Error deleting item: " + error.message);
+      }
+    },
     sortingArray(arrayName) {
-      //accept name of array in "data" and then sort array to be "1,2,3,4,5,6,7,8,9,10,11,12" instead "12,11,10,1,2,3..."
-      // let array = this[arrayName];
-      // array.sort(function (a, b) {
-      //   return a - b;
-      // });
-      // this.lists = array;
-
-      this[arrayName].sort();
-
-      // this[arrayName].sort(function (a, b) {
-      //   if (a.match(/^\d+$/) && b.match(/^\d+$/)) {
-      //     return a - b;
-      //   } else {
-      //     return a > b ? 1 : -1;
-      //   }
-      // });
-      // this[arrayName].sort(function (a, b) {
-      //   if (a.match(/^\d+$/) && !b.match(/^\d+$/)) {
-      //     return -1;
-      //   } else if (!a.match(/^\d+$/) && b.match(/^\d+$/)) {
-      //     return 1;
-      //   } else {
-      //     return a > b ? 1 : -1;
-      //   }
-      // });
-
-      // let array = await this[data].sort(function (a, b) {
-      //   return a - b;
-      // });
-      // this.lists = array;
-      // this.lists.sort((a, b) => a - b);
-      // console.log(array);
-      // console.log("ARRAY NAME: ", arrayName);
-      // let array = [...this[arrayName]];
-      // console.log("array after spread..: ", array);
-      // array.sort(function (a, b) {
-      //   return a - b;
-      // });
-      // console.log("array after sort", array);
-      // this[arrayName] = array;
-      // console.log("array after set to this.lists ", this[arrayName]);
-      // console.log("SORTING DONE!");
+      // Sort lists by name
+      if (arrayName === "lists") {
+        this[arrayName].sort((a, b) => a.name.localeCompare(b.name));
+      } else {
+        this[arrayName].sort();
+      }
     },
   },
 
@@ -381,5 +508,12 @@ export const useMarketListStore = defineStore("market-list", {
   // return { count, doubleCount, increment }
   persist: {
     enabled: true,
+    strategies: [
+      {
+        key: 'market-list-store',
+        storage: localStorage,
+        paths: ['lists', 'selectedList'] // Ne čuvaj items_fields jer se menja dinamički
+      }
+    ]
   },
 });
