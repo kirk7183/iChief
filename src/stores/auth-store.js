@@ -63,8 +63,15 @@ export const useAuthStore = defineStore("auth", {
     },
     // Returns a promise that resolves once the initial auth state is known.
     waitForAuth() {
+      // If promise already exists and is not resolved, return it
       if (this._authReadyPromise) return this._authReadyPromise;
-      // If init() wasn't called yet, call it so the listener is added.
+      
+      // If authReady is already true (listener already resolved once), return resolved promise
+      if (this.authReady) {
+        return Promise.resolve();
+      }
+      
+      // Otherwise, call init() to set up listener and return the promise
       this.init();
       return this._authReadyPromise;
     },
@@ -98,6 +105,12 @@ export const useAuthStore = defineStore("auth", {
         market_list.change_state("selectedList", "");
         market_list.change_state("list_fields", []);
         market_list.change_state("items_fields", []);
+        // Reset auth-ready promise so next login re-initializes properly
+        this._authReadyPromise = null;
+        this._authReadyResolve = null;
+        this.authReady = false;
+        // Redirect to login page
+        router.push("/login");
       });
     },
   },

@@ -21,10 +21,15 @@
 
 <script setup>
 import { useAuthStore } from "@/stores/auth-store";
+import { useRouter } from "vue-router";
 const authStore = useAuthStore();
+const router = useRouter();
 const handleLogin = async () => {
   // console.log("login page handleLogin");
   authStore.login();
+};
+const toRegisterPage = () => {
+  router.push("/register");
 };
 // import { auth, signInWithEmailAndPassword } from "@/firebase/firebase.js";
 // export default {
