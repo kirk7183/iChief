@@ -1,0 +1,196 @@
+// BOJE I FONTOVI
+
+U Vue 3 možeš CSS/SCSS da staviš na više mesta — najčešće u SFC fajlu (.vue) ili u globalnim fajlovima (main.ts / assets).
+
+1) U istom .vue fajlu (Single File Component) ✅
+
+Na dnu komponente dodaš <style> blok.
+
+Običan CSS
+<style>
+.card { padding: 12px; }
+</style>
+
+SCSS u istom fajlu
+<style lang="scss">
+.card {
+  padding: 12px;
+  .title { font-weight: 600; }
+}
+</style>
+
+Scoped (važi samo za tu komponentu)
+<style scoped lang="scss">
+.card {
+  padding: 12px;
+}
+</style>
+
+
+scoped znači da Vue doda atribut selektore tako da stil ne “curi” na druge komponente.
+
+2) Odvojeni fajl pored komponente ✅
+
+Možeš da imaš npr. MyComp.vue + MyComp.scss.
+
+Varijanta A: import u <style>
+<style scoped lang="scss">
+@use "./MyComp.scss";
+</style>
+
+Varijanta B: import u <script setup> (globalno ponašanje po bundleru)
+<script setup>
+import "./MyComp.scss";
+</script>
+
+
+Ovo je ok, ali obično je lepše držati stilove u <style> delu.
+
+3) Globalni stilovi (za ceo app) ✅
+
+Najčešće u src/main.ts:
+
+import { createApp } from "vue";
+import App from "./App.vue";
+import "./assets/styles/main.scss";
+
+createApp(App).mount("#app");
+
+
+Tu main.scss može da importuje ostalo:
+
+@use "./base";
+@use "./typography";
+@use "./variables";
+
+4) CSS Modules (lokalni stilovi bez scoped) ✅
+
+Ako želiš module pristup:
+
+<template>
+  <div :class="$style.card">...</div>
+</template>
+
+<style module lang="scss">
+.card { padding: 12px; }
+</style>
+
+5) Variables / mixins globalno (SCSS) ✅
+
+Ako želiš da ti variables.scss bude dostupan svuda bez import-a, to se podešava u vite.config.ts:
+
+// vite.config.ts
+export default {
+  css: {
+    preprocessorOptions: {
+      scss: {
+        additionalData: `@use "@/assets/styles/variables.scss" as *;`
+      }
+    }
+  }
+}
+
+Šta ti preporučujem za Vite + Vue 3
+
+Komponentni stilovi: <style scoped lang="scss">
+
+Globalno: src/assets/styles/main.scss importovan u main.ts
+
+Varijable/mixins: additionalData u vite.config.ts
+
+Ako mi kažeš da li koristiš neki UI framework (PrimeVue/Vuetify/Tailwind) i da li želiš “scoped po defaultu”, mogu ti predložiti tačnu strukturu foldera (styles/ base/ components/ variables/).
+
+sta ti predlazes?
+
+Za Vite + Vue 3 + Pinia ja bih išao na ovo (praktično, čisto i lako za održavanje):
+
+Predlog strukture
+
+1) Globalni SCSS za “temu” i osnovu
+
+src/assets/styles/
+
+main.scss (ulazna tačka)
+
+_variables.scss (boje, spacing, font, z-index…)
+
+_mixins.scss
+
+_base.scss (reset, body, linkovi)
+
+_utilities.scss (helper klase po potrebi)
+
+U main.ts:
+
+import "./assets/styles/main.scss";
+
+
+U main.scss:
+
+@use "./variables" as *;
+@use "./mixins" as *;
+@use "./base";
+@use "./utilities";
+
+
+✅ Ovo ti daje konzistentan design kroz app.
+
+2) Stilovi po komponenti u istom .vue fajlu (scoped)
+Za skoro sve komponente:
+
+<style scoped lang="scss">
+.wrapper {
+  padding: 12px;
+
+  .title {
+    font-weight: 600;
+  }
+}
+</style>
+
+
+✅ Najbrže se prati: HTML + stil na jednom mestu.
+✅ Ne “curi” na druge delove.
+
+3) Kada koristiti odvojeni .scss fajl
+Samo kad je komponenta velika ili ima baš puno stilova (npr. 200+ linija), onda:
+
+MyBigComp.vue
+
+MyBigComp.scss
+
+I u .vue:
+
+<style scoped lang="scss">
+@use "./MyBigComp.scss";
+</style>
+
+
+✅ Drži .vue čistim, a i dalje je scoped.
+
+Bitna preporuka (da ti SCSS varijable rade svuda)
+
+U vite.config.ts dodaj globalni import varijabli:
+
+css: {
+  preprocessorOptions: {
+    scss: {
+      additionalData: `@use "@/assets/styles/variables.scss" as *;`
+    }
+  }
+}
+
+
+✅ Onda u svakoj komponenti možeš da koristiš npr. $primary bez importa.
+
+Ukratko: “pravila”
+
+Osnova/tema (colors, typography, reset) → globalno main.scss
+
+Layout i specifičan izgled komponente → scoped u .vue
+
+Ogroman stil → odvojeni .scss, ali i dalje scoped
+
+
+
+//

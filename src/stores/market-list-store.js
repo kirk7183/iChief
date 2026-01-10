@@ -136,19 +136,20 @@ export const useMarketListStore = defineStore("market-list", {
         await setDoc(docRef, docData).then(() => {
           this.selectedList = listId;
         });
+        return { success: true };
       } else {
-        alert("Name of list already exists!");
+        return { success: false, message: "Name of list already exists!" };
       }
     },
 
-    async editListName(arg) {
+    async editListName(newListName) {
       if (this.selectedList !== "") {
-        const newListName = prompt("Enter the new list name");
-        if (!newListName) {
-          return;
+        if (!newListName || !newListName.trim()) {
+          return { success: false, message: 'Naziv liste ne može biti prazan' };
         }
     
-        const nameExist = this.lists.some((list) => list.name.toLowerCase() === newListName.toLowerCase());
+        const trimmedName = newListName.trim();
+        const nameExist = this.lists.some((list) => list.name.toLowerCase() === trimmedName.toLowerCase());
     
         if (!nameExist) {
           try {
@@ -157,33 +158,32 @@ export const useMarketListStore = defineStore("market-list", {
             
             // Simply update the name field
             await updateDoc(docRef, {
-              name: newListName.trim()
+              name: trimmedName
             });
             
             console.log('List name updated successfully');
-            alert('List name changed successfully');
+            return { success: true, message: 'Naziv liste je uspešno promenjen' };
           } catch (error) {
             console.error("Error editing list name:", error);
+            return { success: false, message: 'Greška pri promeni naziva liste' };
           }
         } else {
-          alert("Name of list already exists!");
+          return { success: false, message: 'Naziv liste već postoji!' };
         }
       } else {
-        alert("Select a list you want to edit");
+        return { success: false, message: 'Nijedna lista nije izabrana' };
       }
     },
 
     async copyList(newListName) {
       if (!this.selectedList) {
-        alert("Select a list you want to copy");
-        return;
+        return { success: false, message: "Select a list you want to copy" };
       }
 
       // Check if name exists
       const nameExist = this.lists.some((list) => list.name.toLowerCase() === newListName.toLowerCase());
       if (nameExist) {
-        alert("Name of list already exists!");
-        return;
+        return { success: false, message: "Name of list already exists!" };
       }
 
       try {
@@ -191,8 +191,7 @@ export const useMarketListStore = defineStore("market-list", {
         const oldDocRef = doc(db, "market-list", auth.userData.email, "lists", this.selectedList);
         const oldSnap = await getDoc(oldDocRef);
         if (!oldSnap.exists()) {
-          alert("Original list not found");
-          return;
+          return { success: false, message: "Original list not found" };
         }
 
         const copyingDataFields = oldSnap.data();
@@ -219,10 +218,10 @@ export const useMarketListStore = defineStore("market-list", {
         // fetch items for the new list
         await this.fetchItemsFields();
 
-        alert(`List copied as "${newListName.trim()}"`);
+        return { success: true, message: `List copied as "${newListName.trim()}"` };
       } catch (error) {
         console.error("Error copying list:", error);
-        alert("Error copying list!");
+        return { success: false, message: "Error copying list!" };
       }
     },
     
@@ -232,29 +231,26 @@ export const useMarketListStore = defineStore("market-list", {
       // This method is no longer needed since we use updateDoc instead of creating new documents
     },
 
-    async deleteList(listId = null) {
+    async deleteList(listId = null, skipConfirm = false) {
       console.log("delete list");
       const listToDelete = listId || this.selectedList;
       
       // Check if list is selected
       if (!listToDelete) {
-        alert("Select a list you want to DELETE");
-        return;
+        return { success: false, message: "Select a list you want to DELETE" };
       }
       
       // Find list index and name
       let index = this.lists.findIndex(list => list.id === listToDelete);
       if (index === -1) {
-        alert("List not found");
-        return;
+        return { success: false, message: "List not found" };
       }
       
       const listName = this.lists[index].name;
       
       // Ask for confirmation
-      const confirm = window.confirm(`Are you sure you want to delete list "${listName}" and all its items?`);
-      if (!confirm) {
-        return;
+      if (!skipConfirm) {
+        return { success: false, message: 'Confirmation required but not provided' };
       }
       
       try {
@@ -288,11 +284,11 @@ export const useMarketListStore = defineStore("market-list", {
         
         await deleteDoc(listDocRef);
         console.log('List deleted successfully');
-        alert(`List "${listName}" has been deleted`);
+        return { success: true, message: `List "${listName}" has been deleted` };
         
       } catch (error) {
         console.error("Error deleting list:", error);
-        alert("Error deleting list!");
+        return { success: false, message: "Error deleting list!" };
       }
     },
     async fetchListFields() {
@@ -367,6 +363,9 @@ export const useMarketListStore = defineStore("market-list", {
 
     async saveItem(itemData) {
       try {
+        if (!this.selectedList) {
+          return { success: false, message: 'Please select a list first' };
+        }
         const auth = useAuthStore();
         const itemsColRef = collection(
           db,
@@ -378,18 +377,18 @@ export const useMarketListStore = defineStore("market-list", {
         );
         
         await addDoc(itemsColRef, itemData);
-        console.log("v");
+        console.log("Item saved successfully");
+        return { success: true };
       } catch (error) {
         console.error("Error saving item:", error);
-        alert("Error saving item!");
+        return { success: false, message: "Error saving item!" };
       }
     },
 
     async updateItemCompletion(itemId, completed) {
       try {
         if (!this.selectedList) {
-          alert('Please select a list first');
-          return;
+          return { success: false, message: 'Please select a list first' };
         }
         const auth = useAuthStore();
         const itemDocRef = doc(
@@ -407,18 +406,49 @@ export const useMarketListStore = defineStore("market-list", {
           updatedAt: serverTimestamp()
         });
         console.log('Item completion updated', itemId, completed);
+        return { success: true };
       } catch (error) {
         console.error('Error updating item completion:', error);
-        throw error;
+        return { success: false, message: 'Error updating item completion' };
       }
     },
 
-    async deleteItem(itemOrId) {
+    // Update multiple fields of an item (used for editing)
+    async updateItem(itemId, fields) {
+      try {
+        if (!this.selectedList) {
+          return { success: false, message: 'Please select a list first' };
+        }
+        const auth = useAuthStore();
+        const itemDocRef = doc(
+          db,
+          "market-list",
+          auth.userData.email,
+          "lists",
+          this.selectedList,
+          "items",
+          itemId
+        );
+        // add metadata
+        const payload = {
+          ...fields,
+          updatedBy: auth.userData.email || auth.userData.uid,
+          updatedAt: serverTimestamp(),
+        };
+        await updateDoc(itemDocRef, payload);
+        console.log('Item updated', itemId, payload);
+        return { success: true };
+      } catch (error) {
+        console.error('Error updating item:', error);
+        return { success: false, message: 'Error updating item' };
+      }
+    },
+
+    async deleteItem(itemOrId, skipConfirm = false) {
       try {
         // Check if list is selected
         if (!this.selectedList) {
-          alert("Please select a list first");
-          return;
+          return { success: false, message: "Please select a list first" };
         }
 
         const auth = useAuthStore();
@@ -461,14 +491,12 @@ export const useMarketListStore = defineStore("market-list", {
         }
 
         if (!itemId) {
-          alert("Invalid item ID (could not locate document)");
-          return;
+          return { success: false, message: "Invalid item ID (could not locate document)" };
         }
 
         // Ask for confirmation
-        const confirm = window.confirm("Are you sure you want to delete this item?");
-        if (!confirm) {
-          return;
+        if (!skipConfirm) {
+          return { success: false, message: 'Confirmation required but not provided' };
         }
 
         const itemDocRef = doc(
@@ -483,9 +511,10 @@ export const useMarketListStore = defineStore("market-list", {
 
         await deleteDoc(itemDocRef);
         console.log("Item deleted successfully");
+        return { success: true };
       } catch (error) {
         console.error("Error deleting item:", error);
-        alert("Error deleting item: " + error.message);
+        return { success: false, message: "Error deleting item: " + error.message };
       }
     },
     sortingArray(arrayName) {

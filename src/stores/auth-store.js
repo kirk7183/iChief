@@ -5,6 +5,11 @@ import router from "@/router/index.js";
 import {  auth,  signInWithEmailAndPassword, 
   signOut,
   onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  updateEmail,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
 } from "@/firebase/firebase.js";
 
 // const market_list = useMarketListStore();
@@ -14,10 +19,14 @@ export const useAuthStore = defineStore("auth", {
     return {
       email: "",
       password: "",
+      firstName: "",
+      lastName: "",
       userData: {
         isLoggedIn: false,
         uid: "empty",
         email: "",
+        firstName: "",
+        lastName: "",
       },
       // Indicates the initial Firebase auth check completed
       authReady: false,
@@ -40,6 +49,14 @@ export const useAuthStore = defineStore("auth", {
           console.log("USER AUTH STORE, ", user);
           this.userData.uid = user.uid;
           this.userData.email = user.email;
+          
+          // Parse displayName for firstName and lastName
+          if (user.displayName) {
+            const nameParts = user.displayName.split(' ');
+            this.userData.firstName = nameParts[0] || '';
+            this.userData.lastName = nameParts.slice(1).join(' ') || '';
+          }
+          
           this.userData.isLoggedIn = true;
           // Only redirect to Home if currently on the Login page.
           const currentRouteName =
@@ -97,6 +114,40 @@ export const useAuthStore = defineStore("auth", {
         console.log(errorCode, errorMessage);
       }
     },
+    async register() {
+      try {
+        await createUserWithEmailAndPassword(auth, this.email, this.password).then(
+          async (response) => {
+            // Update user profile with name
+            await updateProfile(response.user, {
+              displayName: `${this.firstName} ${this.lastName}`
+            });
+            
+            // Set user data
+            this.userData.uid = response.user.uid;
+            this.userData.email = response.user.email;
+            this.userData.firstName = this.firstName;
+            this.userData.lastName = this.lastName;
+            this.userData.isLoggedIn = true;
+            
+            // Clear form data
+            this.email = "";
+            this.password = "";
+            this.firstName = "";
+            this.lastName = "";
+            
+            console.log("User registered successfully", response);
+            router.push("/");
+          }
+        );
+      } catch (error) {
+        console.log("Registration error:", error);
+        const errorCode = error.code;
+        const errorMessage = error.message;
+        console.log(errorCode, errorMessage);
+        throw error; // Re-throw to handle in component
+      }
+    },
     async logout() {
       await signOut(auth).then(() => {
         const market_list = useMarketListStore();
@@ -112,6 +163,42 @@ export const useAuthStore = defineStore("auth", {
         // Redirect to login page
         router.push("/login");
       });
+    },
+    async updateProfile(updateData) {
+      try {
+        const user = auth.currentUser;
+        if (!user) throw new Error("No user logged in");
+
+        // If there are changes that require authentication, reauthenticate first
+        if (updateData.currentPassword) {
+          const credential = EmailAuthProvider.credential(user.email, updateData.currentPassword);
+          await reauthenticateWithCredential(user, credential);
+        }
+
+        // Update display name if firstName or lastName changed
+        const newDisplayName = `${updateData.firstName} ${updateData.lastName}`;
+        if (user.displayName !== newDisplayName) {
+          await updateProfile(user, {
+            displayName: newDisplayName
+          });
+        }
+
+        // Update email if changed
+        if (updateData.newEmail && updateData.newEmail !== user.email) {
+          await updateEmail(user, updateData.newEmail);
+        }
+
+        // Update local state
+        this.userData.firstName = updateData.firstName;
+        this.userData.lastName = updateData.lastName;
+        if (updateData.newEmail) {
+          this.userData.email = updateData.newEmail;
+        }
+
+      } catch (error) {
+        console.error("Update profile error:", error);
+        throw error;
+      }
     },
   },
   getters: {

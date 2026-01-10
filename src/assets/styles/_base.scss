@@ -1,0 +1,246 @@
+// ============================================
+// RESET I OSNOVNA STILIZACIJA
+// ============================================
+
+@use "./variables" as *;
+@use "./mixins" as *;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: auto; // Changed from smooth to prevent unwanted scrolling
+}
+
+body {
+  font-family: $font-primary;
+  font-size: $fs-base;
+  line-height: $lh-base;
+  color: $text-primary;
+  background-color: $bg-primary;
+  font-weight: $fw-regular;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  // Ensure page always loads at top
+  position: relative;
+}
+
+// ============================================
+// HEADINGS
+// ============================================
+
+h1 {
+  font-size: $fs-2xl;
+  line-height: $lh-xl;
+  font-weight: $fw-bold;
+  margin-bottom: $space-lg;
+  color: $text-primary;
+}
+
+h2 {
+  font-size: $fs-xl;
+  line-height: $lh-lg;
+  font-weight: $fw-bold;
+  margin-bottom: $space-md;
+  color: $text-primary;
+}
+
+h3 {
+  font-size: $fs-base;
+  line-height: $lh-lg;
+  font-weight: $fw-semibold;
+  margin-bottom: $space-md;
+  color: $text-primary;
+}
+
+h4, h5, h6 {
+  font-size: $fs-base;
+  font-weight: $fw-semibold;
+  margin-bottom: $space-sm;
+  color: $text-primary;
+}
+
+// ============================================
+// TIPOGRAFIJA
+// ============================================
+
+p {
+  margin-bottom: $space-md;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+small {
+  font-size: $fs-sm;
+  color: $text-secondary;
+  line-height: $lh-sm;
+}
+
+strong {
+  font-weight: $fw-bold;
+}
+
+em {
+  font-style: italic;
+}
+
+// ============================================
+// LINKS
+// ============================================
+
+a {
+  color: $primary;
+  text-decoration: none;
+  transition: color $transition-fast;
+
+  &:hover {
+    color: $primary-dark;
+    text-decoration: underline;
+  }
+
+  &:focus {
+    @include focus-ring;
+  }
+}
+
+// ============================================
+// BUTTONS (OSNOVNA STILIZACIJA)
+// ============================================
+
+button {
+  @include reset-button;
+}
+
+// ============================================
+// FORMS
+// ============================================
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: $fs-base;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  padding: $space-sm $space-md;
+  background-color: $bg-surface;
+  color: $text-primary;
+  transition: border-color $transition-fast, box-shadow $transition-fast;
+
+  &:focus {
+    border-color: $primary;
+    box-shadow: 0 0 0 3px rgba($primary, 0.1);
+    outline: none;
+  }
+
+  &:disabled {
+    @include disabled;
+    background-color: $border-light;
+  }
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: $primary;
+}
+
+// ============================================
+// LISTS
+// ============================================
+
+ul, ol {
+  margin-bottom: $space-md;
+  padding-left: $space-lg;
+
+  li {
+    margin-bottom: $space-sm;
+  }
+}
+
+// ============================================
+// TABLES
+// ============================================
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: $space-lg;
+
+  th, td {
+    padding: $space-md;
+    text-align: left;
+    border-bottom: 1px solid $border-color;
+  }
+
+  th {
+    background-color: $bg-primary;
+    font-weight: $fw-semibold;
+    color: $text-secondary;
+  }
+
+  tbody tr:hover {
+    background-color: $bg-primary;
+  }
+}
+
+// ============================================
+// HELPER KLASE
+// ============================================
+
+.text-primary {
+  color: $text-primary;
+}
+
+.text-secondary {
+  color: $text-secondary;
+}
+
+.text-success {
+  color: $success;
+}
+
+.text-warning {
+  color: $warning;
+}
+
+.text-error {
+  color: $error;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-bold {
+  font-weight: $fw-bold;
+}
+
+.text-semibold {
+  font-weight: $fw-semibold;
+}
+
+.text-small {
+  font-size: $fs-sm;
+  line-height: $lh-sm;
+}
+
+.truncate {
+  @include truncate;
+}
+
+.line-clamp-2 {
+  @include line-clamp(2);
+}
+
+.line-clamp-3 {
+  @include line-clamp(3);
+}
