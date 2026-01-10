@@ -93,25 +93,39 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
+  scrollBehavior(to, from, savedPosition) {
+    // Always scroll to top when navigating to a new route
+    return { top: 0 };
+  },
 });
 router.beforeEach(async (to, from, next) => {
   // const user = useUser();
   const auth = useAuthStore();
+  // Ensure the auth store has completed its initial check before gating routes
+  if (auth && typeof auth.waitForAuth === "function") {
+    try {
+      await auth.waitForAuth();
+    } catch (e) {
+      console.warn("waitForAuth error", e);
+    }
+  }
   // await user.get();
   // const isLoggedIn = await auth.userData.isLoggedIn;
 
   console.log("authStore.isLoggedIn sada je: ", auth.isLoggedIn); // user is defined
 
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
-    // next({ name: "Home" });
-    // next(false);
-    next(from);
+    next({ name: "Login" });
     return;
-  } // this will work
-  // else if (!to.meta.requiresAuth) {
+  }
+  // Always scroll to top when navigating
   next();
-  return;
-  // }
+  // Use nextTick to ensure DOM is updated before scrolling
+  import('vue').then(({ nextTick }) => {
+    nextTick(() => {
+      window.scrollTo(0, 0);
+    });
+  });
   // next();
 });
 // router.beforeEach(async (to, from, next) => {

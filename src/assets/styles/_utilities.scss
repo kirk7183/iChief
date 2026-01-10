@@ -1,0 +1,394 @@
+// ============================================
+// KOMPONENTE / KOMPONENTE STILOVE
+// ============================================
+
+@use "./variables" as *;
+@use "./mixins" as *;
+@use "sass:color";
+
+.btn {
+  @include flex-center;
+  padding: $space-sm $space-lg;
+  border: none;
+  border-radius: $radius-md;
+  font-size: $fs-sm;
+  font-weight: $fw-semibold;
+  cursor: pointer;
+  transition: all $transition-base;
+  text-decoration: none;
+  display: inline-flex;
+  white-space: nowrap;
+  gap: $space-sm;
+
+  &:focus {
+    @include focus-ring;
+  }
+
+  &:disabled {
+    @include disabled;
+  }
+}
+
+// Primary button
+.btn-primary {
+  background-color: $primary;
+  color: white;
+
+  &:hover:not(:disabled) {
+    background-color: $primary-dark;
+    box-shadow: $shadow-md;
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: $shadow-sm;
+  }
+}
+
+// Success button
+.btn-success {
+  background-color: $success;
+  color: white;
+
+  &:hover:not(:disabled) {
+    background-color: color.adjust($success, $lightness: -10%);
+    box-shadow: $shadow-md;
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: $shadow-sm;
+  }
+}
+
+// Secondary button
+.btn-secondary {
+  background-color: $secondary;
+  color: white;
+
+  &:hover:not(:disabled) {
+    background-color: $secondary-dark;
+    box-shadow: $shadow-md;
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: $shadow-sm;
+  }
+}
+
+// Error button
+.btn-error {
+  background-color: $error;
+  color: white;
+
+  &:hover:not(:disabled) {
+    background-color: color.adjust($error, $lightness: -10%);
+    box-shadow: $shadow-md;
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: $shadow-sm;
+  }
+}
+
+// Outline button
+.btn-outline {
+  background-color: transparent;
+  border: 2px solid $primary;
+  color: $primary;
+
+  &:hover:not(:disabled) {
+    background-color: $primary-faded;
+  }
+}
+
+// Ghost button (minimal)
+.btn-ghost {
+  background-color: transparent;
+  color: $primary;
+
+  &:hover:not(:disabled) {
+    background-color: $primary-faded;
+  }
+}
+
+// Small button
+.btn-sm {
+  padding: $space-xs $space-md;
+  font-size: $fs-xs;
+}
+
+// Large button
+.btn-lg {
+  padding: $space-md $space-2xl;
+  font-size: $fs-base;
+}
+
+// Full width
+.btn-block {
+  width: 100%;
+}
+
+// ======== CARDS ========
+
+.card {
+  @include card;
+  background-color: $bg-surface;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: $space-lg;
+  padding-bottom: $space-md;
+  border-bottom: 1px solid $border-color;
+}
+
+.card-body {
+  padding: 0;
+}
+
+.card-footer {
+  padding-top: $space-lg;
+  border-top: 1px solid $border-color;
+  margin-top: $space-lg;
+  display: flex;
+  gap: $space-md;
+  justify-content: flex-end;
+}
+
+// ======== ALERTS ========
+
+.alert {
+  padding: $space-md $space-lg;
+  border-radius: $radius-md;
+  border-left: 4px solid;
+  margin-bottom: $space-lg;
+
+  &.alert-success {
+    background-color: rgba($success, 0.1);
+    border-color: $success;
+    color: color.adjust($success, $lightness: -20%);
+  }
+
+  &.alert-warning {
+    background-color: rgba($warning, 0.1);
+    border-color: $warning;
+    color: color.adjust($warning, $lightness: -30%);
+  }
+
+  &.alert-error {
+    background-color: rgba($error, 0.1);
+    border-color: $error;
+    color: $error;
+  }
+
+  &.alert-info {
+    background-color: rgba($info, 0.1);
+    border-color: $info;
+    color: $info;
+  }
+}
+
+// ======== BADGES ========
+
+.badge {
+  display: inline-block;
+  padding: $space-xs $space-sm;
+  border-radius: $radius-full;
+  font-size: $fs-xs;
+  font-weight: $fw-semibold;
+  white-space: nowrap;
+
+  &.badge-primary {
+    background-color: $primary-faded;
+    color: $primary;
+  }
+
+  &.badge-secondary {
+    background-color: $secondary-faded;
+    color: $secondary;
+  }
+
+  &.badge-success {
+    background-color: rgba($success, 0.1);
+    color: $success;
+  }
+
+  &.badge-error {
+    background-color: rgba($error, 0.1);
+    color: $error;
+  }
+}
+
+// ======== INPUTS GROUP ========
+
+.input-group {
+  display: flex;
+  gap: $space-sm;
+  margin-bottom: $space-md;
+
+  input {
+    flex: 1;
+  }
+
+  button {
+    padding: $space-sm $space-lg;
+  }
+}
+
+// ======== FORM GROUPS ========
+
+.form-group {
+  margin-bottom: $space-lg;
+
+  label {
+    display: block;
+    margin-bottom: $space-sm;
+    font-weight: $fw-medium;
+    color: $text-primary;
+    font-size: $fs-sm;
+  }
+
+  input, textarea, select {
+    width: 100%;
+  }
+
+  small {
+    display: block;
+    margin-top: $space-xs;
+    color: $text-secondary;
+  }
+}
+
+// ======== CONTAINER / GRID ========
+
+.container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: $space-lg;
+  padding-right: $space-lg;
+
+  @include md {
+    max-width: 720px;
+  }
+
+  @include lg {
+    max-width: 960px;
+  }
+
+  @include xl {
+    max-width: 1140px;
+  }
+
+  @include xl2 {
+    max-width: 1320px;
+  }
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $space-lg;
+  margin-left: -$space-lg;
+  margin-right: -$space-lg;
+
+  > [class*="col-"] {
+    padding-left: $space-lg;
+    padding-right: $space-lg;
+  }
+}
+
+.col-12 {
+  flex: 0 0 100%;
+}
+
+.col-6 {
+  flex: 0 0 50%;
+}
+
+@include md {
+  .col-md-6 {
+    flex: 0 0 50%;
+  }
+
+  .col-md-4 {
+    flex: 0 0 33.33%;
+  }
+
+  .col-md-3 {
+    flex: 0 0 25%;
+  }
+}
+
+@include xl2 {
+  .col-lg-6 {
+    flex: 0 0 50%;
+  }
+
+  .col-lg-4 {
+    flex: 0 0 33.33%;
+  }
+
+  .col-lg-3 {
+    flex: 0 0 25%;
+  }
+}
+
+// ======== UTILITIES ========
+
+.d-flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.gap-sm {
+  gap: $space-sm;
+}
+
+.gap-md {
+  gap: $space-md;
+}
+
+.gap-lg {
+  gap: $space-lg;
+}
+
+.p-lg {
+  padding: $space-lg;
+}
+
+.p-md {
+  padding: $space-md;
+}
+
+.mt-lg {
+  margin-top: $space-lg;
+}
+
+.mb-lg {
+  margin-bottom: $space-lg;
+}
+
+.mb-md {
+  margin-bottom: $space-md;
+}
