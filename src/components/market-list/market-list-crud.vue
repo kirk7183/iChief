@@ -4,29 +4,35 @@
     <div class="market-list-header card">
       <div class="header-content">
         <h1>Moje Kupovne Liste</h1>
-        <div class="select-wrapper">
-          <label for="list">Izaberite listu:</label>
-          <div class="select-container">
-            <select v-model="selectedList" id="list" class="list-select">
-              <option value="">-- Odaberite listu --</option>
-              <option v-for="list in lists" :key="list.id" :value="list.id">
-                {{ list.name }}
-              </option>
-            </select>
-            <button @click.stop="showMenu = !showMenu" class="menu-btn" title="Opcije liste">⋮</button>
-            <div v-if="showMenu" ref="dropdownRef" class="menu-dropdown">
-              <button @click="createListBtn" class="btn btn-primary">
-                ➕ Nova Lista
-              </button>
-              <button @click="editListNameBtn" class="btn btn-secondary" :disabled="!selectedList">
-                ✏️ Uredi Naziv
-              </button>
-              <button @click="copyListBtn" class="btn btn-outline" :disabled="!selectedList">
-                📋 Kopiraj Listu
-              </button>
-              <button @click="deleteListBtn" class="btn btn-ghost" :disabled="!selectedList">
-                🗑️ Obriši Listu
-              </button>
+        <div class="header-actions">
+          <button @click="showInvitesModal = true" class="invites-btn" title="Pozivi">📧</button>
+          <div class="select-wrapper">
+            <label for="list">Izaberite listu:</label>
+            <div class="select-container">
+              <select v-model="selectedList" id="list" class="list-select">
+                <option value="">-- Odaberite listu --</option>
+                <option v-for="list in lists" :key="list.id" :value="list.id">
+                  {{ list.name }}{{ (list.sharedWith && list.sharedWith.length > 0) || list.sharedFrom ? ' ⇄' : '' }}
+                </option>
+              </select>
+              <button @click.stop="showMenu = !showMenu" class="menu-btn" title="Opcije liste">⋮</button>
+              <div v-if="showMenu" ref="dropdownRef" class="menu-dropdown">
+                <button @click="createListBtn" class="btn btn-primary">
+                  ➕ Nova Lista
+                </button>
+                <button @click="editListNameBtn" class="btn btn-secondary" :disabled="!selectedList">
+                  ✏️ Uredi Naziv Liste
+                </button>
+                <button @click="shareListBtn" class="btn btn-outline" :disabled="!selectedList">
+                  📤 Deli Listu
+                </button>
+                <button @click="copyListBtn" class="btn btn-outline" :disabled="!selectedList">
+                  📋 Kopiraj Listu
+                </button>
+                <button @click="deleteListBtn" class="btn btn-ghost" :disabled="!selectedList">
+                  🗑️ Obriši Listu
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -42,12 +48,18 @@
 
     <!-- ADD ITEM FORM -->
     <div v-if="showAddForm" class="add-item-section">
-      <Items-Crud @item-added="showAddForm = false" @cancel="showAddForm = false" />
+      <Items-Crud :currentList="currentList" :userNames="userNames" @item-added="showAddForm = false" @cancel="showAddForm = false" />
     </div>
 
     <!-- STAVKE -->
     <div v-if="filteredItems.length > 0" class="items-section">
-      <h2>Stavke na listi</h2>
+      <div class="items-header">
+        <h2>Stavke na listi</h2>
+        <div class="sort-buttons-compact">
+          <button @click="currentSort = 'asc'" :class="currentSort === 'asc' ? 'btn active' : 'btn'" title="Sortiraj od A do Z">A-Z</button>
+          <button @click="currentSort = 'desc'" :class="currentSort === 'desc' ? 'btn active' : 'btn'" title="Sortiraj od Z do A">Z-A</button>
+        </div>
+      </div>
       <div class="items-grid">
         <div v-for="(singleItem, index) in filteredItems" :key="index" class="item-card card">
           <!-- CHECKBOX AT TOP LEFT -->
@@ -182,7 +194,13 @@
           <h4>{{ confirmTitle }}</h4>
         </div>
         <div class="modal-body">
-          <p>{{ confirmMessage }}</p>
+          <p v-html="confirmMessage"></p>
+          <div v-if="confirmSharedUsers.length > 0" class="shared-users-list">
+            <div v-for="userId in confirmSharedUsers" :key="userId" class="shared-user-item">
+              <div class="user-name">{{ userNames[userId] || userId }}</div>
+              <div class="user-email">{{ userId }}</div>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button @click="cancelConfirm" class="btn btn-secondary">Otkaži</button>
@@ -287,7 +305,7 @@
           <h4>Informacija</h4>
         </div>
         <div class="modal-body">
-          <p>{{ infoMessage }}</p>
+          <p v-html="infoMessage"></p>
         </div>
         <div class="modal-footer">
           <button @click="closeInfoMessageModal" class="btn btn-primary">OK</button>
@@ -307,6 +325,82 @@
       </div>
     </div>
   </div>
+
+  <!-- SHARE LIST MODAL -->
+  <div v-if="showShareModal" class="modal-overlay" @click="closeShareModal">
+    <div class="modal" @click.stop>
+      <div class="modal-header">
+        <h3>Deli Listu</h3>
+        <button @click="closeShareModal" class="close-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div v-if="currentList" class="shared-users">
+          <h4>Deljeni korisnici:</h4>
+          
+          <div v-if="!currentList.sharedWith || (currentList.sharedWith.length === 0 && (!currentList.shareSend || currentList.shareSend.length === 0))" class="no-shared-users">
+            <p>Lista nije deljena još uvek</p>
+          </div>
+
+          <!-- Prikazane osobe sa kojima je lista deljiva -->
+          <div v-for="(userId, index) in currentList.sharedWith" :key="index + '-' + (typeof userId === 'string' ? userId : userId.email)" class="user-item">
+            <span v-if="typeof userId === 'string'">
+              {{ getUserName(userId) }} ({{ userId }})
+            </span>
+            <span v-else>
+              {{ userId.firstName }} {{ userId.lastName }}
+            </span>
+            <input type="checkbox" :checked="true" @change="toggleShare(userId)" />
+          </div>
+        </div>
+        <button @click="sendInviteLink" class="btn btn-primary">Pošalji link liste</button>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeShareModal" class="btn btn-outline">Otkaži</button>
+        <button v-if="hasChanges" @click="saveShareChanges" class="btn btn-primary">Zapamti</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INVITES MODAL -->
+  <div v-if="showInvitesModal" class="modal-overlay" @click="closeInvitesModal">
+    <div class="modal" @click.stop>
+      <div class="modal-header">
+        <h3>Pozivi za liste</h3>
+        <button @click="closeInvitesModal" class="close-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div v-if="pendingInvites.length === 0" class="no-invites">
+          <p>Nemate neobrađenih poziva.</p>
+        </div>
+        <div v-else v-for="invite in pendingInvites" :key="invite.code" class="invite-item">
+          <p>Poziv za listu '{{ invite.listName }}' od {{ invite.ownerName }} ({{ invite.ownerEmail }})</p>
+          <div class="invite-actions">
+            <button @click="acceptInvite(invite.code)" class="btn btn-success">Prihvati</button>
+            <button @click="declineInvite(invite.code)" class="btn btn-error">Odbij</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LINK COPIED MODAL -->
+  <div v-if="showLinkCopiedModal" class="modal-overlay" @click="showLinkCopiedModal = false">
+    <div class="modal" @click.stop>
+      <div class="modal-header">
+        <h3>Link je kopiran!</h3>
+        <button @click="showLinkCopiedModal = false" class="close-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="link-copied-content">
+          <p class="success-message">✅ Link je uspešno kopiran u clipboard!</p>
+          <p class="instructions">Samo uradite PASTE poruke u nekoj od aplikacija koju koristite za dopisivanje (WhatsApp, Messenger, Email, itd.)</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="showLinkCopiedModal = false" class="btn btn-primary">Zatvori</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -317,6 +411,9 @@ import { storeToRefs } from "pinia";
 import ItemsCrud from "@/components/market-list/items-crud.vue";
 import { onMounted, onUnmounted, ref, reactive, computed, nextTick } from "vue";
 import { useAuthStore } from "@/stores/auth-store";
+import { doc, updateDoc, getDoc } from "@/firebase/firebase.js";
+import { db } from "@/firebase/firebase.js";
+import { query, collection, getDocs, where } from "firebase/firestore";
 
 const market_list = useMarketListStore();
 const { selectedList, items_fields, lists } = storeToRefs(market_list);
@@ -328,6 +425,20 @@ const showAddForm = ref(false);
 const expandedItems = ref(new Set());
 const showMenu = ref(false);
 const showInfoModal = ref(false);
+const showShareModal = ref(false);
+const showInvitesModal = ref(false);
+const localSharedWith = ref([]);
+const originalSharedWith = ref([]);
+const userNames = ref({});
+const currentList = computed(() => {
+  if (market_list.selectedList) {
+    return market_list.lists.find(list => list.id === market_list.selectedList) || null;
+  }
+  return null;
+});
+const pendingInvites = ref([]);
+
+const hasChanges = computed(() => JSON.stringify(localSharedWith.value) !== JSON.stringify(originalSharedWith.value));
 
 // Watch for changes in items_fields and set all items to expanded (hidden details)
 watch(items_fields, () => {
@@ -342,6 +453,7 @@ const confirmTitle = ref("");
 const confirmMessage = ref("");
 const confirmButtonText = ref("Potvrdi");
 const confirmCallback = ref(null);
+const confirmSharedUsers = ref([]);
 const showEditNameModal = ref(false);
 const newListName = ref("");
 const showCopyNameModal = ref(false);
@@ -351,7 +463,9 @@ const showCreateListModal = ref(false);
 const createListName = ref("");
 const showInfoMessageModal = ref(false);
 const infoMessage = ref("");
+const showLinkCopiedModal = ref(false);
 const currentFilter = ref('all');
+const currentSort = ref('asc'); // 'asc' (A-Z), 'desc' (Z-A)
 const dropdownRef = ref(null);
 const allBtn = ref(null);
 const pendingBtn = ref(null);
@@ -514,14 +628,26 @@ const editForm = reactive({
 
 // Filtered items
 const filteredItems = computed(() => {
+  let items = [];
   switch (currentFilter.value) {
     case 'pending':
-      return items_fields.value.filter(item => !item.completed);
+      items = items_fields.value.filter(item => !item.completed);
+      break;
     case 'completed':
-      return items_fields.value.filter(item => item.completed);
+      items = items_fields.value.filter(item => item.completed);
+      break;
     default:
-      return items_fields.value;
+      items = items_fields.value;
   }
+  
+  // Apply sorting
+  if (currentSort.value === 'asc') {
+    items.sort((a, b) => a.name.localeCompare(b.name, 'sr-RS', { sensitivity: 'base' }));
+  } else if (currentSort.value === 'desc') {
+    items.sort((a, b) => b.name.localeCompare(a.name, 'sr-RS', { sensitivity: 'base' }));
+  }
+  
+  return items;
 });
 
 // Filter text for display
@@ -593,6 +719,16 @@ onMounted(async () => {
   }
   document.addEventListener('click', handleClickOutside);
   
+  // Fetch owner names for any shared lists
+  const sharedFromEmails = market_list.lists
+    .filter(list => list.sharedFrom)
+    .map(list => list.sharedFrom)
+    .filter((email, index, self) => self.indexOf(email) === index); // unique
+  
+  if (sharedFromEmails.length > 0) {
+    await fetchUserNames(sharedFromEmails);
+  }
+  
   // Removed focus on mount to prevent unwanted scrolling to bottom
   // Focus will still work when user interacts with filter buttons
 
@@ -619,16 +755,290 @@ onMounted(async () => {
   });
 });
 
+// Sharing functions
+let ignoreNextWatcher = false;
+
+const shareListBtn = async () => {
+  if (!selectedList.value) {
+    showInfoMessage("Izaberite listu za deljenje.");
+    showMenu.value = false;
+    return;
+  }
+  
+  // Fetch fresh data from Firebase to ensure we have latest sharedWith
+  try {
+    const freshListDoc = await getDoc(doc(db, "market-list", auth.userData.email, "lists", selectedList.value));
+    if (freshListDoc.exists()) {
+      const freshData = freshListDoc.data();
+      // Update the store's list data
+      const listIndex = market_list.lists.findIndex(l => l.id === selectedList.value);
+      if (listIndex !== -1) {
+        market_list.lists[listIndex].sharedWith = freshData.sharedWith || [];
+        market_list.lists[listIndex].shareSend = freshData.shareSend || [];
+      }
+    }
+  } catch (err) {
+    console.error('Error refreshing list data:', err);
+  }
+  
+  // Check if user is the owner (not shared)
+  if (currentList.value && currentList.value.sharedFrom) {
+    // If no owner name, try to fetch it
+    let ownerDisplay = currentList.value.ownerName || 'vlasnika';
+    if (!currentList.value.ownerName && currentList.value.sharedFrom) {
+      // Fetch owner info synchronously if possible, but since it's async, show with fallback
+      market_list.getOwnerInfo(currentList.value.sharedFrom).then(ownerInfo => {
+        ownerDisplay = `${ownerInfo.firstName} ${ownerInfo.lastName}`;
+        const emailPart = currentList.value.ownerEmail ? `<br>(<strong>${currentList.value.ownerEmail}</strong>)` : ` (<strong>${currentList.value.sharedFrom}</strong>)`;
+        showInfoMessage(`Nemate privilegiju da delite ovu listu jer niste njen vlasnik. Lista "${currentList.value.name}" vam je dodeljena od strane<br><br><strong>${ownerDisplay}</strong><br>${emailPart}<br><br>Samo vlasnik može deliti listu sa drugim korisnicima.`);
+      });
+    } else {
+      const emailPart = currentList.value.ownerEmail ? `<br>(<strong>${currentList.value.ownerEmail}</strong>)` : ` (<strong>${currentList.value.sharedFrom}</strong>)`;
+      showInfoMessage(`Nemate privilegiju da delite ovu listu jer niste njen vlasnik. Lista "${currentList.value.name}" vam je dodeljena od strane<br><strong>${ownerDisplay}</strong><br>${emailPart}</br><br>Samo vlasnik može deliti listu sa drugim korisnicima.`);
+    }
+    showMenu.value = false;
+    return;
+  }
+  
+  try {
+    ignoreNextWatcher = true; // Prevent watcher from firing during modal opening
+    userNames.value = {}; // Clear previous names
+    localSharedWith.value = [...(currentList.value?.sharedWith || [])];
+    originalSharedWith.value = [...(currentList.value?.sharedWith || [])];
+    
+    // Only fetch user names if they are strings (old format)
+    // If they are objects (new format), names are already included
+    const userIdsToFetch = [];
+    for (const item of localSharedWith.value) {
+      if (typeof item === 'string') {
+        // Old format: just email string
+        userIdsToFetch.push(item);
+      }
+      // New format (object): names already included, no need to fetch
+    }
+    
+    // If this is a shared list (received by current user), also fetch owner's name
+    if (currentList.value?.sharedFrom && !userIdsToFetch.includes(currentList.value.sharedFrom)) {
+      userIdsToFetch.push(currentList.value.sharedFrom);
+    }
+    
+    // Only fetch if there are string IDs to fetch
+    if (userIdsToFetch.length > 0) {
+      await fetchUserNames(userIdsToFetch);
+    }
+    
+    // Only open the modal AFTER everything is ready
+    showShareModal.value = true;
+    await nextTick();
+  } catch (err) {
+    console.error('Error in shareListBtn:', err);
+    console.error('Error stack:', err.stack);
+    showInfoMessage('Greška pri otvaranju "Deli listu" modala: ' + err.message);
+  }
+  showMenu.value = false;
+};
+
+const closeShareModal = () => {
+  showShareModal.value = false;
+  localSharedWith.value = [];
+  originalSharedWith.value = [];
+};
+
+const sendInviteLink = async () => {
+  console.log('sendInviteLink called', currentList.value);
+  if (!currentList.value) {
+    showInfoMessage("Nema izabrane liste.");
+    return;
+  }
+  try {
+    const result = await market_list.generateInviteLink(currentList.value.id);
+    console.log('Generated link:', result);
+    showShareModal.value = false;
+    showLinkCopiedModal.value = true;
+  } catch (error) {
+    console.error('Error:', error);
+    showInfoMessage("Greška pri generisanju linka: " + error.message);
+  }
+};
+
+const toggleShare = (userId) => {
+  // Handle both string (old format) and object (new format)
+  if (typeof userId === 'string') {
+    localSharedWith.value = localSharedWith.value.filter(id => 
+      typeof id === 'string' ? id !== userId : id.email !== userId
+    );
+  } else {
+    // Object format - filter by email
+    localSharedWith.value = localSharedWith.value.filter(id => 
+      typeof id === 'string' ? id !== userId.email : id.email !== userId.email
+    );
+  }
+};
+
+const saveShareChanges = async () => {
+  // Handle both string (old format) and object (new format) for removed users
+  const removedUsers = currentList.value.sharedWith.filter(oldId => {
+    const oldEmail = typeof oldId === 'string' ? oldId : oldId.email;
+    return !localSharedWith.value.some(newId => {
+      const newEmail = typeof newId === 'string' ? newId : newId.email;
+      return newEmail === oldEmail;
+    });
+  });
+  
+  for (const userId of removedUsers) {
+    // Extract email for removeUserAccess
+    const userEmail = typeof userId === 'string' ? userId : userId.email;
+    await market_list.removeUserAccess(currentList.value.id, userEmail);
+  }
+  const auth = useAuthStore();
+  const listRef = doc(db, "market-list", auth.userData.email, "lists", currentList.value.id);
+  await updateDoc(listRef, { sharedWith: localSharedWith.value });
+  closeShareModal();
+};
+
+const getUserName = (userId) => {
+  return userNames.value[userId] || `Korisnik ${userId}`;
+};
+
+const closeInvitesModal = () => {
+  showInvitesModal.value = false;
+};
+
+const acceptInvite = async (code) => {
+  try {
+    await market_list.acceptInvite(code);
+    showInfo("Poziv prihvaćen!");
+    closeInvitesModal();
+  } catch (error) {
+    showInfo("Greška: " + error.message);
+  }
+};
+
+const declineInvite = async (code) => {
+  try {
+    await market_list.declineInvite(code);
+    showInfo("Poziv odbijen.");
+    closeInvitesModal();
+  } catch (error) {
+    showInfo("Greška: " + error.message);
+  }
+};
+
+const convertUserIdsToEmails = async (userIds) => {
+  if (!userIds || userIds.length === 0) {
+    return [];
+  }
+  
+  const emails = [];
+  for (const userId of userIds) {
+    // If already an email, keep it
+    if (userId.includes('@')) {
+      emails.push(userId);
+      continue;
+    }
+    
+    // Otherwise, query by UID to get email
+    try {
+      const q = query(collection(db, "users"), where("uid", "==", userId));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const userEmail = snapshot.docs[0].id;
+        emails.push(userEmail);
+      } else {
+        emails.push(userId); // Fallback to UID if not found
+      }
+    } catch (e) {
+      console.error('Error converting UID to email for', userId, ':', e);
+      emails.push(userId); // Fallback to UID
+    }
+  }
+  return emails;
+};
+
+const fetchUserNames = async (userIds) => {
+  if (!userIds || userIds.length === 0) {
+    return;
+  }
+  
+  const promises = userIds.map(async (id) => {
+    if (!userNames.value[id]) {
+      try {
+        let userData = null;
+        
+        // First, try to treat it as an email (if it contains @)
+        if (id.includes('@')) {
+          // Try 1: Check if email is the doc ID
+          let userDoc = await getDoc(doc(db, "users", id));
+          console.log(`Fetching user doc for ${id}:`, userDoc.exists());
+          if (userDoc.exists()) {
+            userData = userDoc.data();
+            console.log(`Found user data for ${id}:`, userData);
+          }
+          
+          // Try 2: Query by email field
+          if (!userData) {
+            const q = query(collection(db, "users"), where("email", "==", id));
+            const snapshot = await getDocs(q);
+            console.log(`Query email field for ${id}:`, !snapshot.empty);
+            if (!snapshot.empty) {
+              userData = snapshot.docs[0].data();
+              console.log(`Found user by email query ${id}:`, userData);
+            }
+          }
+        }
+        
+        // If not found as email or not an email, try as UID
+        if (!userData && !id.includes('@')) {
+          const q = query(collection(db, "users"), where("uid", "==", id));
+          const snapshot = await getDocs(q);
+          if (!snapshot.empty) {
+            userData = snapshot.docs[0].data();
+          }
+        }
+        
+        if (userData && userData.firstName && userData.lastName) {
+          userNames.value[id] = `${userData.firstName} ${userData.lastName}`;
+          console.log(`Set username for ${id}:`, userNames.value[id]);
+        } else {
+          userNames.value[id] = id; // Show the ID/email itself if not found
+          console.log(`No user data found for ${id}, using email as fallback`);
+        }
+      } catch (e) {
+        console.error('Error fetching user name for', id, ':', e);
+        userNames.value[id] = id;
+      }
+    }
+  });
+  await Promise.all(promises);
+};
+
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
 });
 
 watch(
   () => market_list.selectedList,
-  () => {
+  async () => {
     currentFilter.value = 'all';
     if (market_list.selectedList !== "") {
       market_list.fetchItemsFields();
+      
+      // Fetch user names for shared users in the newly selected list
+      const list = market_list.lists.find(l => l.id === market_list.selectedList);
+      console.log('List selected:', list);
+      if (list) {
+        const userIdsToFetch = [...(list.sharedWith || [])];
+        // Also add owner if this is a shared list
+        if (list.sharedFrom && !userIdsToFetch.includes(list.sharedFrom)) {
+          userIdsToFetch.push(list.sharedFrom);
+        }
+        console.log('User IDs to fetch:', userIdsToFetch);
+        if (userIdsToFetch.length > 0) {
+          console.log('Calling fetchUserNames with:', userIdsToFetch);
+          await fetchUserNames(userIdsToFetch);
+          console.log('fetchUserNames completed, userNames now:', userNames.value);
+        }
+      }
     } else {
       market_list.change_state("list_fields", []);
       market_list.change_state("items_fields", []);
@@ -646,6 +1056,23 @@ watch(currentFilter, (newFilter) => {
     completedBtn.value.focus();
   }
 });
+// Update localSharedWith when currentList.sharedWith changes
+// Watcher for real-time updates to sharedWith (but not when opening modal)
+watch(() => currentList.value?.sharedWith, async (newSharedWith) => {
+  console.log('sharedWith changed:', newSharedWith, 'showShareModal:', showShareModal.value);
+  if (ignoreNextWatcher) {
+    ignoreNextWatcher = false;
+    return;
+  }
+  if (newSharedWith && showShareModal.value) {
+    console.log('Updating modal with new sharedWith data');
+    localSharedWith.value = [...newSharedWith];
+    originalSharedWith.value = [...newSharedWith];
+    await fetchUserNames(localSharedWith.value);
+    await nextTick();
+    console.log('Modal updated');
+  }
+}, { deep: true });
 
 const formatDate = (timestamp) => {
   if (!timestamp) return "";
@@ -677,25 +1104,76 @@ const editListNameBtn = () => {
   showEditNameModalFunc();
 };
 
-const deleteListBtn = () => {
+const deleteListBtn = async () => {
   if (!market_list.selectedList) {
     showInfoMessage('Izaberite listu za brisanje');
     return;
   }
   const current = market_list.lists.find(l => l.id === market_list.selectedList);
-  showConfirm(
-    'Brisanje liste',
-    `Da li ste sigurni da želite da obrišete listu "${current ? current.name : ''}" i sve stavke u njoj?`,
-    'Obriši',
-    async () => {
-      const result = await market_list.deleteList(null, true);
-      if (result.success) {
-        showInfoMessage(result.message);
-      } else {
-        showInfoMessage(result.message);
+  const isShared = current && current.sharedFrom;
+  const title = isShared ? 'Uklanjanje pristupa listi' : 'Brisanje liste';
+  const buttonText = isShared ? 'Ukloni pristup' : 'Obriši';
+  
+  if (isShared) {
+    let ownerDisplay = current.ownerName || 'vlasnika';
+    if (!current.ownerName && current.sharedFrom) {
+      // Fetch owner info
+      try {
+        const ownerInfo = await market_list.getOwnerInfo(current.sharedFrom);
+        ownerDisplay = `${ownerInfo.firstName} ${ownerInfo.lastName}`;
+      } catch (error) {
+        console.warn('Failed to fetch owner info:', error);
       }
     }
-  );
+    const emailPart = current.ownerEmail ? `<br>(<strong>${current.ownerEmail}</strong>)` : ` (<strong>${current.sharedFrom}</strong>)`;
+    const message = `Ova lista vam je dodeljena od strane<br><strong>${ownerDisplay}</strong>${emailPart}<br><br>Pošto niste vlasnik liste, možete samo da obrišete vaš pristup ovoj listi - originalna lista i sve stavke će ostati kod vlasnika.<br><br>Više nećete moći pristupiti ovoj listi sve dok vam vlasnik ponovo ne pošalje poziv za deljenje.<br><br>Da li želite da uklonite pristup listi <br>"<strong>${current ? current.name : ''}</strong>"?`;
+    confirmSharedUsers.value = [];
+    showConfirm(
+      title,
+      message,
+      buttonText,
+      async () => {
+        const result = await market_list.deleteList(null, true);
+        if (result.success) {
+          showInfoMessage(result.message);
+        } else {
+          showInfoMessage(result.message);
+        }
+      }
+    );
+  } else {
+    // Ako je vlasnik, prikaži sa kime je lista deljiva
+    confirmSharedUsers.value = [];
+    let messageWithUsers = `Da li ste sigurni da želite da obrišete listu "<strong>${current ? current.name : ''}</strong>" i sve stavke u njoj?`;
+    
+    if (current && current.sharedWith && current.sharedWith.length > 0) {
+      messageWithUsers += `<br><br><strong>Ova lista je podeljena sa:</strong>`;
+      // Extract user IDs from sharedWith (handle both string and object formats)
+      const userIds = current.sharedWith.map(item => {
+        // Handle both string (old format with email) and object (new format)
+        return typeof item === 'string' ? item : (item.email || item);
+      });
+      // Convert UIDs to emails if needed
+      const userEmails = await convertUserIdsToEmails(userIds);
+      // Fetch user names if not already fetched
+      await fetchUserNames(userEmails);
+      confirmSharedUsers.value = userEmails;
+    }
+    
+    showConfirm(
+      title,
+      messageWithUsers,
+      buttonText,
+      async () => {
+        const result = await market_list.deleteList(null, true);
+        if (result.success) {
+          showInfoMessage(result.message);
+        } else {
+          showInfoMessage(result.message);
+        }
+      }
+    );
+  }
 };
 
 const copyListBtn = async () => {
@@ -799,6 +1277,32 @@ const toggleCompleted = async (item, ev) => {
       align-items: flex-end;
       justify-content: space-between;
     }
+
+    h1 {
+      color: $text-primary;
+      font-size: $fs-xl;
+      font-weight: $fw-bold;
+      margin: 0;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: $space-md;
+    }
+
+    .invites-btn {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: $space-xs;
+      border-radius: $radius-sm;
+
+      &:hover {
+        background-color: rgba(0, 0, 0, 0.1);
+      }
+    }
   }
 
   .select-wrapper {
@@ -901,13 +1405,40 @@ const toggleCompleted = async (item, ev) => {
 .items-section {
   margin-bottom: $space-2xl;
 
-  h2 {
+  .items-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: $space-lg;
-    color: $text-primary;
-    font-size: $fs-lg;
+    gap: $space-md;
 
-    @include md {
-      font-size: $fs-xl;
+    h2 {
+      margin: 0;
+      color: $text-primary;
+      font-size: $fs-lg;
+      flex: 1;
+
+      @include md {
+        font-size: $fs-xl;
+      }
+    }
+
+    .sort-buttons-compact {
+      display: flex;
+      gap: $space-sm;
+
+      .btn {
+        padding: $space-sm $space-xl;
+        font-size: $fs-sm;
+        border: 1px solid $border-color;
+        white-space: nowrap;
+
+        &.active {
+          background-color: color.adjust($primary, $lightness: -10%) !important;
+          border: 2px solid color.adjust($primary, $lightness: -10%) !important;
+          color: white !important;
+        }
+      }
     }
   }
 }
@@ -1278,9 +1809,42 @@ const toggleCompleted = async (item, ev) => {
     margin-bottom: $space-lg;
 
     p {
-      margin: 0;
+      margin: 0 0 $space-md 0;
       color: $text-primary;
       line-height: 1.5;
+      text-align: center;
+
+      strong {
+        font-weight: bold;
+      }
+    }
+
+    .shared-users-list {
+      margin-top: $space-lg;
+      padding: $space-md;
+      background-color: $bg-primary;
+      border-radius: $radius-md;
+      border-left: 4px solid $primary;
+
+      .shared-user-item {
+        padding: $space-sm 0;
+        border-bottom: 1px solid $border-color;
+
+        &:last-child {
+          border-bottom: none;
+        }
+
+        .user-name {
+          font-weight: $fw-medium;
+          color: $text-primary;
+          margin-bottom: $space-xs;
+        }
+
+        .user-email {
+          font-size: $fs-sm;
+          color: $text-secondary;
+        }
+      }
     }
   }
 
@@ -1516,6 +2080,10 @@ const toggleCompleted = async (item, ev) => {
       color: $text-primary;
       line-height: 1.5;
       text-align: center;
+
+      strong {
+        font-weight: bold;
+      }
     }
   }
 
@@ -1647,6 +2215,30 @@ const toggleCompleted = async (item, ev) => {
     }
   }
 
+  .sort-buttons {
+    display: flex;
+    gap: $space-md;
+    justify-content: center;
+    margin-bottom: $space-lg;
+
+    @include tablet {
+      margin-bottom: 0;
+      flex: 2;
+    }
+
+    .btn {
+      flex: 1;
+      border: 1px solid $border-color;
+      font-size: $fs-sm;
+
+      &.active {
+        background-color: color.adjust($primary, $lightness: -10%) !important;
+        border: 2px solid color.adjust($primary, $lightness: -10%) !important;
+        color: white !important;
+      }
+    }
+  }
+
   .delete-completed {
     margin-top: $space-lg;
     display: flex;
@@ -1659,6 +2251,147 @@ const toggleCompleted = async (item, ev) => {
 
     .btn {
       width: 100%;
+    }
+  }
+}
+
+// Modal styles
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-xl;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: $space-lg;
+    border-bottom: 1px solid $border-color;
+
+    h3 {
+      margin: 0;
+      color: $text-primary;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+  }
+
+  .modal-body {
+    padding: $space-lg;
+
+    .shared-users {
+      margin-bottom: $space-lg;
+
+      h4 {
+        margin-bottom: $space-md;
+        color: $text-primary;
+      }
+
+      .user-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: $space-sm;
+        border-bottom: 1px solid $border-color;
+      }
+
+      .pending-invite-item {
+        padding: $space-md;
+        background-color: #fff3e0;
+        border: 1px solid #ffb74d;
+        border-radius: $radius-md;
+        margin-bottom: $space-md;
+
+        .invite-info {
+          display: flex;
+          flex-direction: column;
+          gap: $space-xs;
+          font-size: $fs-sm;
+
+          .invite-status {
+            font-weight: $fw-medium;
+            color: #ff9800;
+          }
+
+          .invite-code {
+            color: $text-secondary;
+            word-break: break-all;
+            font-family: monospace;
+          }
+
+          .invite-sent,
+          .invite-expires {
+            color: $text-secondary;
+          }
+        }
+      }
+    }
+
+    .no-invites {
+      text-align: center;
+      color: $text-secondary;
+    }
+
+    .invite-item {
+      padding: $space-md;
+      border: 1px solid $border-color;
+      border-radius: $radius-md;
+      margin-bottom: $space-md;
+
+      .invite-actions {
+        display: flex;
+        gap: $space-sm;
+        margin-top: $space-sm;
+      }
+    }
+  }
+
+  .modal-footer {
+    padding: $space-lg;
+    border-top: 1px solid $border-color;
+    display: flex;
+    justify-content: flex-end;
+    gap: $space-md;
+  }
+
+  .link-copied-content {
+    text-align: center;
+    padding: $space-lg;
+
+    .success-message {
+      font-size: 1.3rem;
+      color: #4caf50;
+      font-weight: bold;
+      margin-bottom: $space-lg;
+    }
+
+    .instructions {
+      color: $text-secondary;
+      font-size: 1rem;
+      line-height: 1.6;
+      margin: 0;
     }
   }
 }

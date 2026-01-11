@@ -337,7 +337,7 @@ export default {
         );
         //delete that selectedList in FB and remove it from 'lists. When its deleted, setup selectedList to be empty
         await deleteDoc(myDocRef).then(() => {
-          alert('list "' + this.selectedList + '" has been deleted');
+          alert('Lista "' + this.selectedList + '" je obrisana');
           this.lists.splice(index, 1);
           this.selectedList = "";
         });

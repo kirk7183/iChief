@@ -10,6 +10,10 @@ import {  auth,  signInWithEmailAndPassword,
   updateEmail,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  db,
+  getDoc,
+  setDoc,
+  doc,
 } from "@/firebase/firebase.js";
 
 // const market_list = useMarketListStore();
@@ -95,16 +99,44 @@ export const useAuthStore = defineStore("auth", {
     async login() {
       try {
         await signInWithEmailAndPassword(auth, this.email, this.password).then(
-          (response) => {
+          async (response) => {
             //set data
             this.userData.uid = response.user.uid;
             this.userData.email = response.user.email;
             this.userData.isLoggedIn = true;
+            
+            // Try to get name from Firebase Auth displayName
+            if (response.user.displayName) {
+              const [firstName, ...lastNameParts] = response.user.displayName.split(' ');
+              this.userData.firstName = firstName;
+              this.userData.lastName = lastNameParts.join(' ');
+            }
+            
+            // Ensure user profile exists in Firestore
+            const userDocRef = doc(db, "users", response.user.email);
+            const userDocSnap = await getDoc(userDocRef);
+            if (!userDocSnap.exists()) {
+              // Create user document if it doesn't exist
+              await setDoc(userDocRef, {
+                firstName: this.userData.firstName || response.user.displayName?.split(' ')[0] || 'User',
+                lastName: this.userData.lastName || '',
+                email: response.user.email,
+                uid: response.user.uid
+              });
+              console.log('Created missing user profile for:', response.user.email);
+            } else {
+              // Load from existing document
+              const userData = userDocSnap.data();
+              this.userData.firstName = userData.firstName;
+              this.userData.lastName = userData.lastName;
+            }
+            
             //clear data
             this.email = "";
             this.password = "";
             console.log("response", response);
-            router.push("/");
+            console.log("Current route:", router.currentRoute.value.path);
+            // Don't redirect here - let the component handle it with redirect parameter
           }
         );
       } catch (error) {
@@ -112,6 +144,19 @@ export const useAuthStore = defineStore("auth", {
         const errorCode = error.code;
         const errorMessage = error.message;
         console.log(errorCode, errorMessage);
+        
+        // Throw specific error messages
+        if (errorCode === 'auth/user-not-found') {
+          throw new Error('Korisnik sa ovom email adresom ne postoji. Molimo registrujte se.');
+        } else if (errorCode === 'auth/wrong-password') {
+          throw new Error('Pogrešna lozinka. Molimo pokušajte ponovo.');
+        } else if (errorCode === 'auth/invalid-email') {
+          throw new Error('Email adresa je pogrešna');
+        } else if (errorCode === 'auth/user-disabled') {
+          throw new Error('Nalog je deaktiviran. Kontaktirajte podršku.');
+        } else {
+          throw new Error(errorMessage || 'Greška pri prijavi. Pokušajte ponovo.');
+        }
       }
     },
     async register() {
@@ -130,6 +175,18 @@ export const useAuthStore = defineStore("auth", {
             this.userData.lastName = this.lastName;
             this.userData.isLoggedIn = true;
             
+            // Save to users collection
+            const userEmail = response.user.email || this.email;
+            console.log('Saving user to Firestore with email key:', userEmail);
+            console.log('User firstName:', this.firstName, 'lastName:', this.lastName);
+            await setDoc(doc(db, "users", userEmail), {
+              firstName: this.firstName,
+              lastName: this.lastName,
+              email: userEmail,
+              uid: response.user.uid
+            });
+            console.log('User saved to Firestore successfully for:', userEmail);
+            
             // Clear form data
             this.email = "";
             this.password = "";
@@ -137,7 +194,8 @@ export const useAuthStore = defineStore("auth", {
             this.lastName = "";
             
             console.log("User registered successfully", response);
-            router.push("/");
+            console.log("Current route:", router.currentRoute.value.path);
+            // Don't redirect here - let the component handle it with redirect parameter
           }
         );
       } catch (error) {
@@ -145,7 +203,17 @@ export const useAuthStore = defineStore("auth", {
         const errorCode = error.code;
         const errorMessage = error.message;
         console.log(errorCode, errorMessage);
-        throw error; // Re-throw to handle in component
+        
+        // Throw specific error messages
+        if (errorCode === 'auth/email-already-in-use') {
+          throw new Error('Nalog sa ovim emailom već postoji');
+        } else if (errorCode === 'auth/weak-password') {
+          throw new Error('Lozinka mora biti duža od 6 karaktera');
+        } else if (errorCode === 'auth/invalid-email') {
+          throw new Error('Email adresa je pogrešna');
+        } else {
+          throw new Error(errorMessage || 'Greška pri registraciji. Pokušajte ponovo.');
+        }
       }
     },
     async logout() {

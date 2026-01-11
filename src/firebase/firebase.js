@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, signOut, signInWithEmailAndPassword, onAuthStateChanged, RecaptchaVerifier, signInWithPhoneNumber, PhoneAuthProvider, createUserWithEmailAndPassword, updateProfile, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, collectionGroup, query, onSnapshot, orderBy, addDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, collectionGroup, query, where, onSnapshot, orderBy, addDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 // import { db } from "./Firebase/config";
 // TODO: Replace the following with your app's Firebase project configuration
 // See: https://firebase.google.com/docs/web/learn-more#config-object
@@ -20,4 +20,4 @@ const firebaseApp = initializeApp(firebaseConfig);
 // Initialize Firebase Authentication and get a reference to the service
 const auth = getAuth(firebaseApp);
 const db = getFirestore();
-export { db, auth, signOut, signInWithEmailAndPassword, onAuthStateChanged, RecaptchaVerifier, signInWithPhoneNumber, PhoneAuthProvider, collection, doc, getDoc, setDoc, getDocs, collectionGroup, query, onSnapshot, orderBy, deleteDoc, addDoc, updateDoc, serverTimestamp, createUserWithEmailAndPassword, updateProfile, updateEmail, EmailAuthProvider, reauthenticateWithCredential };
+export { db, auth, signOut, signInWithEmailAndPassword, onAuthStateChanged, RecaptchaVerifier, signInWithPhoneNumber, PhoneAuthProvider, collection, doc, getDoc, setDoc, getDocs, collectionGroup, query, where, onSnapshot, orderBy, deleteDoc, addDoc, updateDoc, serverTimestamp, createUserWithEmailAndPassword, updateProfile, updateEmail, EmailAuthProvider, reauthenticateWithCredential };

@@ -62,9 +62,11 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth-store";
+import { useMarketListStore } from "@/stores/market-list-store";
 import { useRouter } from "vue-router";
 
 const authStore = useAuthStore();
+const marketStore = useMarketListStore();
 const router = useRouter();
 const isLoading = ref(false);
 
@@ -89,10 +91,56 @@ const handleLogin = async () => {
   isLoading.value = true;
   try {
     await authStore.login();
-    // Success - router će automatski redirectovati
+    console.log('Login successful, checking for pending invite...');
+    // Wait a moment for auth state to fully update
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Check for pending invite code first
+    const pendingCode = marketStore.getPendingInviteCode();
+    console.log('Pending invite code:', pendingCode);
+    
+    if (pendingCode) {
+      console.log('Found pending invite, redirecting to invite page');
+      marketStore.clearPendingInviteCode();
+      router.push({
+        name: 'Invite',
+        query: {
+          code: pendingCode
+        }
+      });
+    } else {
+      // Check for redirect parameter (for backward compatibility)
+      const redirect = router.currentRoute.value.query.redirect;
+      console.log('Redirect parameter:', redirect);
+      if (redirect) {
+        console.log('Pushing to:', redirect);
+        // Handle redirect - it could be a path with query string like /invite?code=XXX
+        if (redirect.includes('?')) {
+          // Split path and query string
+          const [path, queryString] = redirect.split('?');
+          // Parse query string into object
+          const queryParams = new URLSearchParams(queryString);
+          const queryObj = {};
+          queryParams.forEach((value, key) => {
+            queryObj[key] = value;
+          });
+          console.log('Parsed path:', path, 'Parsed query:', queryObj);
+          router.push({
+            path: path,
+            query: queryObj
+          });
+        } else {
+          // No query string, just a simple path
+          router.push(redirect);
+        }
+      } else {
+        console.log('No redirect, going to home');
+        router.push("/");
+      }
+    }
   } catch (error) {
     console.error("Login error:", error);
-    // Error handling će biti u auth store-u
+    showInfoMessage(error.message || "Greška pri prijavi. Pokušajte ponovo.");
   } finally {
     isLoading.value = false;
   }

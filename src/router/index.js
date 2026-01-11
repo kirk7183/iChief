@@ -69,6 +69,12 @@ const routes = [
     //   next((await getCurrentUser) ? "Market-list" : "/");
     // },
   },
+  {
+    path: "/invite",
+    name: "Invite",
+    component: () => import("../views/invite-page.vue"),
+    meta: { requiresAuth: false },
+  },
   // {
   //   path:"/market-list-home",
   //   name:"marketListHome",

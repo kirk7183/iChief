@@ -149,7 +149,7 @@ stari kom
         );
         //delete that selectedList in Firebase and then this.realTimeListeners will in "removed" and remove 'list' in 'lists' and empty state for 'selectedList'.
         await deleteDoc(myDocRef).then(() => {
-          alert('list "' + selected + '" has been deleted');
+          alert('lista "' + selected + '" je obrisana');
         });
       } else {
         alert("select list you want to DELETE");
@@ -172,7 +172,7 @@ stari kom
         );
         //delete that selectedList in Firebase and then this.realTimeListeners will in "removed" and remove 'list' in 'lists' and empty state for 'selectedList'.
         await deleteDoc(myDocRef).then(() => {
-          alert('list "' + selected + '" has been deleted');
+          alert('lista "' + selected + '" je obrisana');
         });
       } else {
         alert("select list you want to DELETE");
