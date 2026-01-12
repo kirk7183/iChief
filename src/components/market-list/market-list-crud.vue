@@ -63,101 +63,113 @@
       <div class="items-grid">
         <div v-for="(singleItem, index) in filteredItems" :key="index" class="item-card card">
           <!-- CHECKBOX AT TOP LEFT -->
-          <div class="item-header">
-            <label class="checkbox-label">
+          <div class="item-header" :class="{ 'no-border': editingId === singleItem.id }">
+            <label v-if="editingId !== singleItem.id" class="checkbox-label">
               <input 
                 type="checkbox" 
                 :checked="singleItem.completed"
                 @change="toggleCompleted(singleItem, $event)"
                 class="item-checkbox"
               />
-              <span v-if="singleItem.completed" class="item-status completed">Završeno</span>
-              <span v-else class="item-status pending">Na listi</span>
+              <!-- <span v-if="singleItem.completed" class="item-status completed">Završeno</span>
+              <span v-else class="item-status pending">Na listi</span> -->
             </label>
+            <!-- ITEM CONTENT -->
+            <!--EDIT MODE -->
+            <div class="item-content">
+              <template v-if="editingId === singleItem.id">
+                <div class="form-group">
+                  <label>Naziv</label>
+                  <input v-model="editForm.name" />
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Količina</label>
+                    <input v-model="editForm.amount" type="number" />
+                  </div>
+                  <div class="form-group">
+                    <label>Jedinica</label>
+                      <select v-model="editForm.unit">
+                        <option v-for="unit in UNITS" :key="unit" :value="unit">{{ unit }}</option>
+                      </select>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>Kupac</label>
+                  <input v-model="editForm.buyer" />
+                </div>
+                <div class="form-group">
+                  <label>Napomena</label>
+                  <input v-model="editForm.info" />
+                </div>
+                <div class="form-actions">
+                  <button class="btn btn-primary" @click.prevent="saveEdit(singleItem.id)">Sačuvaj</button>
+                  <button class="btn btn-error" @click.prevent="cancelEdit">Otkaži</button>
+                </div>
+              </template>
+              <!-- VIEW MODE INLINE-->
+              <template v-else>
+                <div class="item-header-row">
+                  <div class="item-name-section">
+                    <h3 class="item-name" :class="{ completed: singleItem.completed }">{{ singleItem.name }}</h3>
+                    <span class="item-quantity">{{ singleItem.amount }} {{ singleItem.unit }}</span>
+                  </div>
+                  <button @click="debugDelete(singleItem)" class="btn-icon delete-btn" title="Obriši">×</button>
+                </div>
+              </template>
+            </div>
             <div class="item-actions">
-              <button @click="startEdit(singleItem)" class="btn-icon" title="Uredi">✏️</button>
-              <button @click="debugDelete(singleItem)" class="btn-icon" title="Obriši">🗑️</button>
-              <button @click="toggleExpanded(singleItem.id)" class="btn-icon" :title="expandedItems.has(singleItem.id) ? 'Prikaži sve' : 'Sakrij sve'">
-                {{ expandedItems.has(singleItem.id) ? '▼' : '▲' }}
-              </button>
             </div>
           </div>
 
-          <!-- ITEM CONTENT -->
-          <div class="item-content">
-            <template v-if="editingId === singleItem.id">
-              <div class="form-group">
-                <label>Naziv</label>
-                <input v-model="editForm.name" />
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Količina</label>
-                  <input v-model="editForm.amount" type="number" />
-                </div>
-                <div class="form-group">
-                  <label>Jedinica</label>
-                    <select v-model="editForm.unit">
-                      <option v-for="unit in UNITS" :key="unit" :value="unit">{{ unit }}</option>
-                    </select>
-                </div>
-              </div>
-              <div class="form-group">
-                <label>Kupac</label>
-                <input v-model="editForm.buyer" />
-              </div>
-              <div class="form-group">
-                <label>Napomena</label>
-                <input v-model="editForm.info" />
-              </div>
-              <div class="form-actions">
-                <button class="btn btn-primary" @click.prevent="saveEdit(singleItem.id)">Sačuvaj</button>
-                <button class="btn btn-outline" @click.prevent="cancelEdit">Otkaži</button>
-              </div>
-            </template>
-            <template v-else>
-              <div class="item-header-row">
-                <h3 class="item-name">{{ singleItem.name }}</h3>
-                <span v-if="expandedItems.has(singleItem.id)" class="item-quantity">{{ singleItem.amount }} {{ singleItem.unit }}</span>
-              </div>
-              <small v-if="expandedItems.has(singleItem.id) && singleItem.buyer" class="item-buyer">{{ singleItem.buyer }}</small>
-              <button v-if="expandedItems.has(singleItem.id) && singleItem.info" @click="showInfoModal = true; selectedInfo = singleItem.info" class="btn-info" title="Prikaži napomenu">i</button>
-              
-              <div v-if="!expandedItems.has(singleItem.id)" class="item-details">
-                <div class="detail-row">
-                  <span class="label">Količina:</span>
-                  <span class="value">{{ singleItem.amount }} {{ singleItem.unit }}</span>
-                </div>
-                
-                <div class="detail-row" v-if="singleItem.buyer">
-                  <span class="label">Kupac:</span>
-                  <span class="value">{{ singleItem.buyer }}</span>
-                </div>
-                
-                <div class="detail-row" v-if="singleItem.info">
-                  <span class="label">Napomena:</span>
-                  <span class="value">{{ singleItem.info }}</span>
-                </div>
-              </div>
+          <!-- CONTENT BELOW HEADER LINE -->
+          <div v-if="editingId !== singleItem.id && expandedItems.has(singleItem.id) && (singleItem.buyer || singleItem.info)" class="item-buyer-info" @click="toggleExpanded(singleItem.id)">
+            <div class="left">
+              <small v-if="singleItem.buyer" class="item-buyer">{{ singleItem.buyer }}</small>
+              <button v-if="singleItem.info" @click.stop="showInfoModal = true; selectedInfo = singleItem.info" class="btn-info" title="Prikaži napomenu">i</button>
+            </div>
+            <div class="right">
+              <button @click.stop="startEdit(singleItem)" class="btn-icon" title="Uredi">✏️</button>
+              <!-- <button @click.stop="toggleExpanded(singleItem.id)" class="btn-icon" :title="expandedItems.has(singleItem.id) ? 'Prikaži sve' : 'Sakrij sve'">
+                {{ expandedItems.has(singleItem.id) ? '▼' : '▲' }}
+              </button> -->
+            </div>
+          </div>
+          
+          <!--VIEW MODE COLLAPSED-->
+          <div v-if="editingId !== singleItem.id && !expandedItems.has(singleItem.id)" class="item-details" @click="toggleExpanded(singleItem.id)">
+            <div class="detail-row">
+              <span class="label">Količina:</span>
+              <span class="value">{{ singleItem.amount }} {{ singleItem.unit }}</span>
+            </div>
+            
+            <div class="detail-row" v-if="singleItem.buyer">
+              <span class="label">Kupac:</span>
+              <span class="value">{{ singleItem.buyer }}</span>
+            </div>
+            
+            <div class="detail-row" v-if="singleItem.info">
+              <span class="label">Napomena:</span>
+              <span class="value">{{ singleItem.info }}</span>
+            </div>
+          </div>
 
-              <!-- METADATA -->
-              <div v-if="!expandedItems.has(singleItem.id)" class="item-metadata">
-                <div class="meta-item">
-                  <small class="meta-label meta-added">Dodata:</small>
-                  <small class="meta-value">{{ formatDate(singleItem.timestamp) }}</small>
-                </div>
-                
-                <div class="meta-item" v-if="singleItem.updatedAt">
-                  <small class="meta-label meta-updated">Izmenjena:</small>
-                  <small class="meta-value">{{ formatDate(singleItem.updatedAt) }}</small>
-                </div>
-                
-                <div class="meta-item" v-if="singleItem.updatedBy">
-                  <small class="meta-label meta-user">Izmenio:</small>
-                  <small class="meta-value">{{ singleItem.updatedBy }}</small>
-                </div>
-              </div>
-            </template>
+          <!-- METADATA -->
+          <div v-if="editingId !== singleItem.id && !expandedItems.has(singleItem.id)" class="item-metadata" @click="toggleExpanded(singleItem.id)">
+            <div class="meta-item">
+              <small class="meta-label meta-added">Dodata:</small>
+              <small class="meta-value">{{ formatDate(singleItem.timestamp) }}</small>
+            </div>
+            
+            <div class="meta-item" v-if="singleItem.updatedAt">
+              <small class="meta-label meta-updated">Izmenjena:</small>
+              <small class="meta-value">{{ formatDate(singleItem.updatedAt) }}</small>
+            </div>
+            
+            <div class="meta-item" v-if="singleItem.updatedBy">
+              <small class="meta-label meta-user">Izmenio:</small>
+              <small class="meta-value">{{ singleItem.updatedBy }}</small>
+            </div>
           </div>
         </div>
       </div>
@@ -1469,13 +1481,49 @@ const toggleCompleted = async (item, ev) => {
     transform: translateY(-4px);
   }
 
+  .btn-icon {
+    @include reset-button;
+    padding: $space-xs;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all $transition-fast;
+    border-radius: $radius-md;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+
+    &:hover {
+      background-color: $bg-primary;
+      transform: scale(1.15);
+    }
+
+    &.delete-btn {
+      width: 36px;
+      height: 36px;
+      font-size: 24px;
+      margin-left: auto;
+    }
+
+    &:active {
+      transform: scale(0.95);
+    }
+  }
+
   .item-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    margin-bottom: $space-md;
-    padding-bottom: $space-md;
+    margin-bottom: $space-sm;
+    padding-bottom: $space-sm;
     border-bottom: 2px solid $border-color;
+
+    &.no-border {
+      border-bottom: none;
+      padding-bottom: 0;
+      margin-bottom: 0;
+    }
 
     .checkbox-label {
       display: flex;
@@ -1493,10 +1541,6 @@ const toggleCompleted = async (item, ev) => {
 
         &:hover {
           transform: scale(1.1);
-        }
-
-        &:checked {
-          // accent-color: $success;
         }
       }
 
@@ -1517,29 +1561,6 @@ const toggleCompleted = async (item, ev) => {
     .item-actions {
       display: flex;
       gap: $space-sm;
-
-      .btn-icon {
-        @include reset-button;
-        padding: $space-xs;
-        font-size: 18px;
-        cursor: pointer;
-        transition: all $transition-fast;
-        border-radius: $radius-md;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 32px;
-        height: 32px;
-
-        &:hover {
-          background-color: $bg-primary;
-          transform: scale(1.15);
-        }
-
-        &:active {
-          transform: scale(0.95);
-        }
-      }
     }
   }
 
@@ -1547,84 +1568,120 @@ const toggleCompleted = async (item, ev) => {
     flex: 1;
 
     .item-name {
-      color: $text-primary;
-      margin-bottom: $space-md;
+      color: $accent-red;
+      margin-bottom: $space-xs;
       word-break: break-word;
+      padding-right: 5px;
+      line-height: 18px;
+      font-weight: $fw-semibold;
+
+      &.completed {
+        text-decoration: line-through;
+        color: $text-muted;
+      }
+    }
+
+    .item-name-section {
+      margin-top: 2px;
     }
 
     .item-header-row {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      padding-left: 10px;
+      gap: $space-sm;
 
       .item-quantity {
-        color: $text-secondary;
+        color: $text-muted;
         font-size: $fs-sm;
-        font-weight: $fw-semibold;
+        font-weight: $fw-regular;
       }
     }
 
-    .item-buyer {
-      color: $text-secondary;
-      font-size: $fs-xs;
-      border: 1px solid $text-secondary;
-      border-radius: $radius-sm;
-      padding: $space-xs $space-sm;
-      display: inline-block;
-      margin-top: $space-xs;
-      margin-right: $space-sm;
+    .form-group {
+      label {
+        color: $text-muted;
+      }
     }
+  }
 
-    .btn-info {
-      @include reset-button;
-      color: $text-secondary;
+  .item-buyer {
+    color: $text-secondary;
+    font-size: $fs-xs;
+    border: 1px solid $text-secondary;
+    border-radius: $radius-sm;
+    padding: $space-xs $space-sm;
+    display: inline-block;
+    margin-top: $space-xs;
+    margin-right: $space-lg;
+  }
+
+  .item-buyer-info {
+    display: flex;
+    gap: $space-sm;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: $space-xs;
+    cursor: pointer;
+    .right {
+      .btn-icon:first-of-type {
+        margin-top: 4px;
+        margin-right: 8px;
+      }
+    }
+  }
+
+  .btn-info {
+    @include reset-button;
+    color: $text-secondary;
+    font-size: $fs-sm;
+    border: 1px solid $text-secondary;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: $space-xs;
+    margin-right: $space-sm;
+    cursor: pointer;
+    transition: all $transition-fast;
+    line-height: 20px;
+
+    &:hover {
+      background-color: $text-secondary;
+      color: $bg-primary;
+    }
+  }
+
+  .item-details {
+    margin-bottom: $space-lg;
+    background-color: $bg-primary;
+    padding: $space-md;
+    border-radius: $radius-md;
+    cursor: pointer;
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      gap: $space-md;
+      margin-bottom: $space-sm;
       font-size: $fs-sm;
-      font-weight: $fw-semibold;
-      border: 1px solid $text-secondary;
-      border-radius: 50%;
-      width: 20px;
-      height: 20px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all $transition-fast;
-      margin-top: $space-xs;
 
-      &:hover {
-        background-color: $text-secondary;
-        color: $bg-primary;
+      &:last-child {
+        margin-bottom: 0;
       }
-    }
 
-    .item-details {
-      margin-bottom: $space-lg;
-      background-color: $bg-primary;
-      padding: $space-md;
-      border-radius: $radius-md;
+      .label {
+        font-weight: $fw-semibold;
+        color: $text-secondary;
+        flex-shrink: 0;
+      }
 
-      .detail-row {
-        display: flex;
-        justify-content: space-between;
-        gap: $space-md;
-        margin-bottom: $space-sm;
-        font-size: $fs-sm;
-
-        &:last-child {
-          margin-bottom: 0;
-        }
-
-        .label {
-          font-weight: $fw-semibold;
-          color: $text-secondary;
-          flex-shrink: 0;
-        }
-
-        .value {
-          color: $text-primary;
-          text-align: right;
-          word-break: break-word;
-        }
+      .value {
+        color: $text-primary;
+        text-align: right;
+        word-break: break-word;
       }
     }
   }
@@ -1635,6 +1692,7 @@ const toggleCompleted = async (item, ev) => {
     display: grid;
     grid-template-columns: 1fr;
     gap: $space-sm;
+    cursor: pointer;
 
     @include md {
       grid-template-columns: repeat(2, 1fr);

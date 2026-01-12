@@ -51,6 +51,17 @@
           />
         </div>
 
+        <div class="form-group">
+          <label for="passwordConfirm">Potvrdite lozinku</label>
+          <input
+            type="password"
+            v-model="passwordConfirm"
+            id="passwordConfirm"
+            placeholder="Potvrdite lozinku"
+            class="form-input"
+          />
+        </div>
+
         <button type="submit" class="btn btn-primary btn-full" :disabled="isLoading">
           <span v-if="isLoading">🔄 Registracija...</span>
           <span v-else>📝 Registruj se</span>
@@ -91,6 +102,7 @@ const authStore = useAuthStore();
 const marketStore = useMarketListStore();
 const router = useRouter();
 const isLoading = ref(false);
+const passwordConfirm = ref("");
 
 // Modal state
 const showInfoMessageModal = ref(false);
@@ -117,6 +129,11 @@ const handleRegister = async () => {
 
   if (!authStore.password.trim()) {
     showInfoMessage("Unesite lozinku!");
+    return;
+  }
+
+  if (authStore.password !== passwordConfirm.value) {
+    showInfoMessage("Lozinke se ne poklapaju!");
     return;
   }
 
@@ -190,6 +207,12 @@ const toLoginPage = () => {
 // Ensure page is at top when component mounts
 onMounted(() => {
   window.scrollTo(0, 0);
+  // Reset all form fields
+  authStore.firstName = "";
+  authStore.lastName = "";
+  authStore.email = "";
+  authStore.password = "";
+  passwordConfirm.value = "";
 });
 </script>
 
