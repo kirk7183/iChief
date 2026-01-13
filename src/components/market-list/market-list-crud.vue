@@ -61,7 +61,7 @@
         </div>
       </div>
       <div class="items-grid">
-        <div v-for="(singleItem, index) in filteredItems" :key="index" class="item-card card">
+        <div v-for="(singleItem, index) in filteredItems" :key="index" class="item-card card" :class="{ 'edit-mode': editingId === singleItem.id }">
           <!-- CHECKBOX AT TOP LEFT -->
           <div class="item-header" :class="{ 'no-border': editingId === singleItem.id }">
             <label v-if="editingId !== singleItem.id" class="checkbox-label">
@@ -78,6 +78,10 @@
             <!--EDIT MODE -->
             <div class="item-content">
               <template v-if="editingId === singleItem.id">
+                <div class="edit-modal-header">
+                  <h4>Izmene</h4>
+                  <button @click="cancelEdit" class="close-btn" title="Zatvori">×</button>
+                </div>
                 <div class="form-group">
                   <label>Naziv</label>
                   <input v-model="editForm.name" />
@@ -103,8 +107,8 @@
                   <input v-model="editForm.info" />
                 </div>
                 <div class="form-actions">
-                  <button class="btn btn-primary" @click.prevent="saveEdit(singleItem.id)">Sačuvaj</button>
                   <button class="btn btn-error" @click.prevent="cancelEdit">Otkaži</button>
+                  <button class="btn btn-primary" @click.prevent="saveEdit(singleItem.id)">Sačuvaj</button>
                 </div>
               </template>
               <!-- VIEW MODE INLINE-->
@@ -215,8 +219,8 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button @click="cancelConfirm" class="btn btn-secondary">Otkaži</button>
-          <button @click="confirmAction" class="btn btn-error">{{ confirmButtonText }}</button>
+          <button @click="cancelConfirm" class="btn btn-error">Otkaži</button>
+          <button @click="confirmAction" class="btn btn-primary">{{ confirmButtonText }}</button>
         </div>
       </div>
     </div>
@@ -244,7 +248,7 @@
           </form>
         </div>
         <div class="modal-footer">
-          <button @click="cancelEditName" class="btn btn-secondary">Otkaži</button>
+          <button @click="cancelEditName" class="btn btn-error">Otkaži</button>
           <button @click="saveNewListName" class="btn btn-primary" :disabled="!newListName.trim()">Sačuvaj</button>
         </div>
       </div>
@@ -274,7 +278,7 @@
           </form>
         </div>
         <div class="modal-footer">
-          <button @click="cancelCopyName" class="btn btn-secondary">Otkaži</button>
+          <button @click="cancelCopyName" class="btn btn-error">Otkaži</button>
           <button @click="executeCopyList" class="btn btn-primary" :disabled="!copyListName.trim()">Kopiraj</button>
         </div>
       </div>
@@ -303,7 +307,7 @@
           </form>
         </div>
         <div class="modal-footer">
-          <button @click="cancelCreateList" class="btn btn-secondary">Otkaži</button>
+          <button @click="cancelCreateList" class="btn btn-error">Otkaži</button>
           <button @click="executeCreateList" class="btn btn-primary" :disabled="!createListName.trim()">Kreiraj</button>
         </div>
       </div>
@@ -367,7 +371,7 @@
         <button @click="sendInviteLink" class="btn btn-primary">Pošalji link liste</button>
       </div>
       <div class="modal-footer">
-        <button @click="closeShareModal" class="btn btn-outline">Otkaži</button>
+        <button @click="closeShareModal" class="btn btn-error">Otkaži</button>
         <button v-if="hasChanges" @click="saveShareChanges" class="btn btn-primary">Zapamti</button>
       </div>
     </div>
@@ -423,6 +427,7 @@ import { storeToRefs } from "pinia";
 import ItemsCrud from "@/components/market-list/items-crud.vue";
 import { onMounted, onUnmounted, ref, reactive, computed, nextTick } from "vue";
 import { useAuthStore } from "@/stores/auth-store";
+import { useLoaderStore } from "@/stores/loader-store";
 import { doc, updateDoc, getDoc } from "@/firebase/firebase.js";
 import { db } from "@/firebase/firebase.js";
 import { query, collection, getDocs, where } from "firebase/firestore";
@@ -430,6 +435,7 @@ import { query, collection, getDocs, where } from "firebase/firestore";
 const market_list = useMarketListStore();
 const { selectedList, items_fields, lists } = storeToRefs(market_list);
 const auth = useAuthStore();
+const loader = useLoaderStore();
 
 // Editing state
 const editingId = ref("");
@@ -459,12 +465,27 @@ watch(items_fields, () => {
     expandedItems.value.add(item.id);
   });
 });
+
+// Watch for edit mode changes - close add form when edit starts
+watch(editingId, (newEditingId) => {
+  if (newEditingId) {
+    showAddForm.value = false;
+  }
+});
+
+// Watch for add form changes - close edit mode when form opens
+watch(showAddForm, (newShowAddForm) => {
+  if (newShowAddForm) {
+    editingId.value = "";
+  }
+});
 const selectedInfo = ref("");
 const showConfirmModal = ref(false);
 const confirmTitle = ref("");
 const confirmMessage = ref("");
 const confirmButtonText = ref("Potvrdi");
 const confirmCallback = ref(null);
+const confirmSuccessMessage = ref(null);
 const confirmSharedUsers = ref([]);
 const showEditNameModal = ref(false);
 const newListName = ref("");
@@ -488,17 +509,25 @@ const closeMenu = () => {
 };
 
 // Confirmation modal functions
-const showConfirm = (title, message, buttonText = "Potvrdi", callback) => {
+const showConfirm = (title, message, buttonText = "Potvrdi", callback, successMessage = null) => {
   confirmTitle.value = title;
   confirmMessage.value = message;
   confirmButtonText.value = buttonText;
   confirmCallback.value = callback;
+  confirmSuccessMessage.value = successMessage;
   showConfirmModal.value = true;
 };
 
 const confirmAction = () => {
   if (confirmCallback.value) {
-    confirmCallback.value();
+    loader.startLoading();
+    Promise.resolve(confirmCallback.value()).finally(() => {
+      loader.stopLoading();
+      // Show success message if provided
+      if (confirmSuccessMessage.value) {
+        showInfoMessage(confirmSuccessMessage.value);
+      }
+    });
   }
   showConfirmModal.value = false;
 };
@@ -633,7 +662,7 @@ const handleClickOutside = (event) => {
 const editForm = reactive({
   name: "",
   amount: "",
-  unit: "Kom/Kesa",
+  unit: "Kom",
   buyer: "",
   info: "",
 });
@@ -678,7 +707,7 @@ const startEdit = (item) => {
   editingId.value = item.id;
   editForm.name = item.name || "";
   editForm.amount = item.amount || "";
-  editForm.unit = item.unit || "Kom/Kesa";
+  editForm.unit = item.unit || "Kom";
   editForm.buyer = item.buyer || "";
   editForm.info = item.info || "";
 };
@@ -708,37 +737,52 @@ const saveEdit = async (itemId) => {
     info: editForm.info,
   };
   try {
+    loader.startLoading();
     await market_list.updateItem(itemId, payload);
     editingId.value = "";
   } catch (e) {
     console.error('Error saving edit', e);
     showInfoMessage('Greška pri čuvanju izmene');
+  } finally {
+    loader.stopLoading();
   }
 };
 
 onMounted(async () => {
-  if (auth && typeof auth.waitForAuth === "function") {
-    try {
-      await auth.waitForAuth();
-    } catch (e) {
-      console.warn("waitForAuth failed", e);
+  try {
+    // Keep loader visible while loading initial data
+    loader.startLoading();
+    
+    if (auth && typeof auth.waitForAuth === "function") {
+      try {
+        await auth.waitForAuth();
+      } catch (e) {
+        console.warn("waitForAuth failed", e);
+      }
     }
-  }
-  market_list.fetchLists();
-  market_list.realTimeListeners();
-  if (market_list.selectedList) {
-    market_list.fetchItemsFields();
-  }
-  document.addEventListener('click', handleClickOutside);
-  
-  // Fetch owner names for any shared lists
-  const sharedFromEmails = market_list.lists
-    .filter(list => list.sharedFrom)
-    .map(list => list.sharedFrom)
-    .filter((email, index, self) => self.indexOf(email) === index); // unique
-  
-  if (sharedFromEmails.length > 0) {
-    await fetchUserNames(sharedFromEmails);
+    
+    // Wait for lists to load
+    await market_list.fetchLists();
+    market_list.realTimeListeners();
+    
+    if (market_list.selectedList) {
+      await market_list.fetchItemsFields();
+    }
+    document.addEventListener('click', handleClickOutside);
+    
+    // Fetch owner names for any shared lists
+    const sharedFromEmails = market_list.lists
+      .filter(list => list.sharedFrom)
+      .map(list => list.sharedFrom)
+      .filter((email, index, self) => self.indexOf(email) === index); // unique
+    
+    if (sharedFromEmails.length > 0) {
+      await fetchUserNames(sharedFromEmails);
+    }
+  } finally {
+    // Stop loader only after all data is loaded
+    loader.stopLoading();
+    loader.setInitializing(false);
   }
   
   // Removed focus on mount to prevent unwanted scrolling to bottom
@@ -1212,13 +1256,14 @@ const deleteCompleted = async () => {
   }
   showConfirm(
     'Brisanje završenih stavki',
-    `Da li želite da obrišete ${completedItems.length} završenih stavki?`,
+    `Ukupno završenih stavki za brisanje: ${completedItems.length}`,
     'Obriši',
     async () => {
       for (const item of completedItems) {
         await market_list.deleteItem(item, true);
       }
-    }
+    },
+    `Ukupno obrisanih stavki sa liste: ${completedItems.length}`
   );
 };
 
@@ -1232,7 +1277,8 @@ const debugDelete = (item) => {
     'Obriši',
     () => {
       market_list.deleteItem(item, true);
-    }
+    },
+    `Artikal "${item.name}" je obrisan sa liste`
   );
 };
 
@@ -1244,10 +1290,13 @@ const editItem = (itemId) => {
 const toggleCompleted = async (item, ev) => {
   const checked = ev.target.checked;
   try {
+    loader.startLoading();
     await market_list.updateItemCompletion(item.id, checked);
   } catch (e) {
     console.error('Error toggling completion', e);
     showInfoMessage('Greška pri promeni statusa itema');
+  } finally {
+    loader.stopLoading();
   }
 };
 </script>
@@ -1473,13 +1522,7 @@ const toggleCompleted = async (item, ev) => {
 .item-card {
   display: flex;
   flex-direction: column;
-  transition: all $transition-base;
   padding: $space-lg;
-
-  &:hover {
-    box-shadow: $shadow-lg;
-    transform: translateY(-4px);
-  }
 
   .btn-icon {
     @include reset-button;
@@ -1761,6 +1804,64 @@ const toggleCompleted = async (item, ev) => {
   .btn {
     flex: 1;
     justify-content: center;
+  }
+}
+
+// ======== EDIT MODAL HEADER ========
+.edit-modal-header {
+  padding: $space-md $space-lg;
+  border-bottom: 2px solid $border-color;
+  margin-bottom: $space-lg;
+  background-color: rgba($secondary, 0.05);
+  border-radius: $radius-md $radius-md 0 0;
+
+  h4 {
+    margin: 0;
+    color: $secondary;
+    font-size: $fs-lg;
+    font-weight: $fw-semibold;
+  }
+}
+
+// ======== EDIT MODE STYLING ========
+.item-card.edit-mode {
+  background: linear-gradient(135deg, $bg-surface 0%, rgba($secondary, 0.05) 100%);
+  border-left: 4px solid $secondary;
+  padding: $space-lg;
+  border-radius: $radius-md;
+  box-shadow: $shadow-md;
+  transition: none;
+  
+  .edit-modal-header {
+    padding: $space-md $space-lg;
+    border-bottom: 2px solid $border-color;
+    margin: (-$space-lg) (-$space-lg) $space-lg (-$space-lg);
+    border-radius: $radius-md $radius-md 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    
+    h4 {
+      margin: 0;
+      color: $secondary;
+      font-size: $fs-lg;
+      font-weight: $fw-semibold;
+    }
+    
+    .close-btn {
+      @include reset-button;
+      font-size: 24px;
+      color: $text-secondary;
+      cursor: pointer;
+      padding: $space-xs;
+      border-radius: $radius-md;
+      transition: all $transition-fast;
+
+      &:hover {
+        background-color: $bg-primary;
+        color: $text-primary;
+      }
+    }
   }
 }
 

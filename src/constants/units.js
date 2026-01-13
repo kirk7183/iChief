@@ -1,6 +1,7 @@
 // Centralizovana lista jedinica mere za sve iteme
 export const UNITS = [
-  "Kom/Kesa",
+  "Kom",
+  "Kesa",
   "Kg",
   "Gram",
   "Litar",

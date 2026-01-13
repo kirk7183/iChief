@@ -441,6 +441,42 @@ export const useMarketListStore = defineStore("market-list", {
           } catch (err) {
             console.error('Error removing user from sharedWith:', err);
           }
+        } else if (listBeforeDelete && listBeforeDelete.sharedWith && listBeforeDelete.sharedWith.length > 0) {
+          // If this is the owner deleting the list, delete it from ALL shared users' paths
+          console.log('Owner deleting a shared list. Need to delete from shared users paths.');
+          const userEmail = auth.userData?.email;
+          
+          if (!userEmail) {
+            console.error('User email not available, cannot delete from shared users');
+            return { success: true, message: `Lista "${listName}" je obrisana iz vaše liste, ali mogućno nije obrisana iz deljenih kopija.` };
+          }
+          
+          const sharedUsers = listBeforeDelete.sharedWith;
+          const deleteSharedPromises = [];
+          
+          sharedUsers.forEach(user => {
+            // Handle both string (old format with email) and object (new format)
+            const userEmail = typeof user === 'string' ? user : (user.email || user);
+            
+            const sharedListRef = doc(db, "market-list", userEmail, "lists", listToDelete);
+            
+            // Delete all items from shared user's copy
+            deleteSharedPromises.push(
+              getDocs(collection(db, "market-list", userEmail, "lists", listToDelete, "items"))
+                .then(querySnapshot => {
+                  const itemDeletePromises = querySnapshot.docs.map(itemDoc => deleteDoc(itemDoc.ref));
+                  return Promise.all(itemDeletePromises);
+                })
+                .then(() => {
+                  // Delete the shared list document itself
+                  return deleteDoc(sharedListRef);
+                })
+                .catch(err => console.warn(`Could not delete shared list from user ${userEmail}:`, err))
+            );
+          });
+          
+          await Promise.all(deleteSharedPromises);
+          console.log('Deleted shared list from all users paths');
         }
         
         return { success: true, message: `Lista "${listName}" je obrisana` };

@@ -146,7 +146,7 @@
         <p>{{ infoMessage }}</p>
       </div>
       <div class="modal-footer">
-        <button @click="showInfoMessageModal = false" class="btn btn-primary">OK</button>
+        <button @click="closeInfoMessageModal" class="btn btn-primary">OK</button>
       </div>
     </div>
   </div>
@@ -156,11 +156,13 @@
 <script setup>
   import { storeToRefs } from "pinia";
   import { useAuthStore } from "@/stores/auth-store";
+  import { useLoaderStore } from "@/stores/loader-store";
   import router from "@/router/index.js";
   import { onMounted, ref, nextTick, computed } from "vue";
   // import { useRouter } from "@/router/index.js";
   // const router = useRouter();
   const authStore = useAuthStore();
+  const loaderStore = useLoaderStore();
   const handleLogOut = async () => {
     authStore.logout();
   };
@@ -175,6 +177,7 @@
   // Info message modal state
   const showInfoMessageModal = ref(false);
   const infoMessage = ref('');
+  const infoMessageCallback = ref(null);
 
   // Edit profile modal state
   const showEditProfileModal = ref(false);
@@ -233,9 +236,18 @@
     }
   };
 
-  const showInfoMessage = (message) => {
+  const showInfoMessage = (message, callback = null) => {
     infoMessage.value = message;
+    infoMessageCallback.value = callback;
     showInfoMessageModal.value = true;
+  };
+
+  const closeInfoMessageModal = () => {
+    showInfoMessageModal.value = false;
+    // Execute callback if provided
+    if (infoMessageCallback.value) {
+      infoMessageCallback.value();
+    }
   };
 
   const handleUpdateProfile = async () => {
@@ -270,6 +282,8 @@
     }
 
     isUpdating.value = true;
+    const emailChanged = showEmailChange.value && editForm.value.newEmail !== userData.value.email;
+    
     try {
       const updateData = {
         firstName: editForm.value.firstName,
@@ -281,7 +295,18 @@
       
       await authStore.updateProfile(updateData);
       closeEditProfileModal();
-      showInfoMessage("Profil je uspešno ažuriran!");
+      
+      if (emailChanged) {
+        // Show message that user needs to re-login with callback to logout
+        showInfoMessage(
+          "Profil je uspešno ažuriran! Molimo da se ponovo prijavite sa novom email adresom.",
+          () => {
+            authStore.logout();
+          }
+        );
+      } else {
+        showInfoMessage("Profil je uspešno ažuriran!");
+      }
     } catch (error) {
       console.error("Update profile error:", error);
       if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
@@ -304,6 +329,8 @@
   // Ensure page is at top when component mounts
   onMounted(() => {
     window.scrollTo(0, 0);
+    // Reset initializing state on any page (not loading data, just showing initial state)
+    loaderStore.setInitializing(false);
   });
 </script>
 

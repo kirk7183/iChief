@@ -96,10 +96,12 @@
 import { ref, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth-store";
 import { useMarketListStore } from "@/stores/market-list-store";
+import { useLoaderStore } from "@/stores/loader-store";
 import { useRouter } from "vue-router";
 
 const authStore = useAuthStore();
 const marketStore = useMarketListStore();
+const loaderStore = useLoaderStore();
 const router = useRouter();
 const isLoading = ref(false);
 const passwordConfirm = ref("");
@@ -207,6 +209,7 @@ const toLoginPage = () => {
 // Ensure page is at top when component mounts
 onMounted(() => {
   window.scrollTo(0, 0);
+  loaderStore.setInitializing(false);
   // Reset all form fields
   authStore.firstName = "";
   authStore.lastName = "";

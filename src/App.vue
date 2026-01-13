@@ -1,4 +1,6 @@
 <template>
+  <Loader />
+  
   <header>
     <div class="wrapper">
       <nav-bar></nav-bar>
@@ -15,6 +17,7 @@
 
 <script setup>
   // import { RouterLink, RouterView } from "vue-router";
+  import Loader from "@/components/Loader.vue";
   import snackBar from "@/components/add-ons/snack-bar.vue"
   import navBar from "@/components/nav-bar.vue";
   // import { onBeforeMount } from "vue";

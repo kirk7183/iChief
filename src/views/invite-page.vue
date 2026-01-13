@@ -31,10 +31,12 @@
 import { ref, onMounted, watch } from 'vue';
 import { useAuthStore } from '@/stores/auth-store';
 import { useMarketListStore } from '@/stores/market-list-store';
+import { useLoaderStore } from '@/stores/loader-store';
 import { useRouter } from 'vue-router';
 
 const authStore = useAuthStore();
 const marketStore = useMarketListStore();
+const loaderStore = useLoaderStore();
 const router = useRouter();
 
 const isLoggedIn = ref(false);
@@ -81,6 +83,7 @@ onMounted(async () => {
   if (!code) {
     error.value = 'Nevažeći link.';
     loading.value = false;
+    loaderStore.setInitializing(false);
     return;
   }
 
@@ -92,12 +95,14 @@ onMounted(async () => {
     marketStore.setPendingInviteCode(code);
     isLoggedIn.value = false;
     loading.value = false;
+    loaderStore.setInitializing(false);
     return;
   }
 
   // User is logged in, process the invite
   isLoggedIn.value = true;
   await processInvite(code);
+  loaderStore.setInitializing(false);
 });
 
 // Watch for code changes in URL and process invite

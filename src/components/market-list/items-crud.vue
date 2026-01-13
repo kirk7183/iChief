@@ -72,11 +72,11 @@
       </div>
 
       <div class="form-actions">
+        <button type="button" @click="emit('cancel')" class="btn btn-error">
+          Otkaži
+        </button>
         <button type="submit" class="btn btn-primary">
           ➕ Dodaj na Listu
-        </button>
-        <button type="button" @click="emit('cancel')" class="btn btn-outline">
-          Otkaži
         </button>
       </div>
     </form>
@@ -119,7 +119,7 @@ const props = defineProps({
 
 const nameInput = ref("");
 const amountInput = ref("");
-const unitSelect = ref("Kom/Kesa");
+const unitSelect = ref("Kom");
 const infoInput = ref("");
 const buyerInput = ref("");
 const defaultBuyer = ref("");
@@ -464,7 +464,7 @@ const showInfoMessage = (message) => {
 const clearForm = () => {
   nameInput.value = "";
   amountInput.value = "";
-  unitSelect.value = "Kom/Kesa";
+  unitSelect.value = "Kom";
   infoInput.value = "";
   buyerInput.value = "";
 };
@@ -547,11 +547,17 @@ onMounted(async () => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: $space-lg;
+    padding: $space-md $space-lg;
+    border-bottom: 2px solid $border-color;
+    margin: (-$space-lg) (-$space-lg) $space-lg (-$space-lg);
+    border-radius: $radius-md $radius-md 0 0;
+    background-color: rgba(245, 159, 0, 0.05);
 
     h3 {
       color: $secondary;
       margin: 0;
+      font-size: $fs-lg;
+      font-weight: $fw-semibold;
     }
 
     .close-btn {
