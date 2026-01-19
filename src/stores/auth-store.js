@@ -58,7 +58,6 @@ export const useAuthStore = defineStore("auth", {
 
       onAuthStateChanged(auth, (user) => {
         if (user) {
-          console.log("USER AUTH STORE, ", user);
           this.userData.uid = user.uid;
           this.userData.email = user.email;
           
@@ -527,7 +526,6 @@ export const useAuthStore = defineStore("auth", {
   },
   getters: {
     isLoggedIn() {
-      console.log(this.userData.isLoggedIn);
       return this.userData.isLoggedIn;
     },
   },

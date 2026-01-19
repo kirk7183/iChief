@@ -36,6 +36,15 @@ export const useMarketListStore = defineStore("market-list", {
       pendingInviteCode: null, // Stores invite code when user is not logged in
       itemsUnsubscribe: null, // Store unsubscribe function for real-time listener
       isEmailMigrationInProgress: false, // Flag to prevent listener updates during email migration
+      activeUsers: {}, // Stores active users for each list: { listId: [{email, name}, ...] }
+      presenceUnsubscribe: null, // Store unsubscribe function for presence listener
+      presenceHeartbeat: null, // Heartbeat interval to keep user presence updated
+      activityCleanup: null, // Function to clean up activity listeners
+      inMemoryPresence: {}, // In-memory presence tracking as fallback: { listId: { uid: {userData} } }
+      lastActivityTime: 0, // Track last activity time to prevent too frequent updates
+      cleanupInterval: null, // Interval for cleaning up stale presence data
+      presenceUpdateTime: 0, // Track last presence update to trigger reactivity
+      presenceBroadcast: null, // BroadcastChannel for cross-tab presence sync
     };
   },
 
@@ -576,11 +585,9 @@ export const useMarketListStore = defineStore("market-list", {
 
     async fetchItemsFields() {
       //fetch item fields from selected List name - when  user select list, 
-      console.log("[fetchItemsFields] Starting for list:", this.selectedList);
       
       // Skip if email migration is in progress
       if (this.isEmailMigrationInProgress) {
-        console.log("[fetchItemsFields] Skipping - email migration in progress");
         return;
       }
       
@@ -588,19 +595,16 @@ export const useMarketListStore = defineStore("market-list", {
       
       // Clean up old listener before setting up new one
       if (this.itemsUnsubscribe) {
-        console.log("[fetchItemsFields] Cleaning up old items listener");
         this.itemsUnsubscribe();
         this.itemsUnsubscribe = null;
       }
       
       // Find the list to check if shared
       const list = this.lists.find(l => l.id === this.selectedList);
-      console.log("[fetchItemsFields] Found list:", list?.name, "sharedFrom:", list?.sharedFrom);
       
       // For shared lists, items are stored under the OWNER's email (sharedFrom)
       // For own lists, items are stored under current user's email
       const emailToUse = list && list.sharedFrom ? list.sharedFrom : auth.userData.email;
-      console.log("[fetchItemsFields] Using email for items:", emailToUse, "(sharedFrom:", list?.sharedFrom, ", currentUser:", auth.userData.email, ")");
       
       // Add a small delay to ensure Firebase has processed the latest changes
       // This helps when email migration just happened
@@ -622,10 +626,8 @@ export const useMarketListStore = defineStore("market-list", {
               id: each.id,
               ...each.data()
             };
-            console.log("[fetchItemsFields] Loading item:", itemData.name || itemData.id);
             this.items_fields.push(itemData);
           });
-          console.log("[fetchItemsFields] Successfully loaded", this.items_fields.length, "items from", emailToUse);
         });
       }
     },
@@ -1192,6 +1194,326 @@ export const useMarketListStore = defineStore("market-list", {
         }
       } catch (err) {
         console.error('Error removing user access:', err);
+      }
+    },
+
+    // Presence tracking - track active users on a list
+    async setUserPresence(listId) {
+      const auth = useAuthStore();
+      if (!auth.userData.email) {
+        console.warn('⚠️ Cannot set presence - no user email');
+        return;
+      }
+      
+      // Initialize in-memory presence for this list if not exists
+      if (!this.inMemoryPresence[listId]) {
+        this.inMemoryPresence[listId] = {};
+      }
+      
+      this.inMemoryPresence[listId][auth.userData.uid] = {
+        uid: auth.userData.uid,
+        email: auth.userData.email,
+        firstName: auth.userData.firstName || 'User',
+        lastName: auth.userData.lastName || '',
+        name: `${auth.userData.firstName || 'User'} ${auth.userData.lastName || ''}`,
+        lastSeen: Date.now()
+      };
+
+      // Update activeUsers from in-memory presence
+      this.updateActiveUsersFromMemory(listId);
+
+      // Broadcast to other tabs
+      this.broadcastPresenceChange('user_joined', listId, auth.userData.uid);
+
+      // Try to also write to Firestore (non-blocking fallback)
+      try {
+        const presenceRef = doc(db, "presence", listId, "users", auth.userData.uid);
+        await setDoc(presenceRef, {
+          uid: auth.userData.uid,
+          email: auth.userData.email,
+          firstName: auth.userData.firstName || 'User',
+          lastName: auth.userData.lastName || '',
+          timestamp: new Date().toISOString(),
+          lastSeen: new Date()
+        });
+      } catch (error) {
+        // Firestore write failed, but in-memory presence is active
+      }
+
+      // Clear old heartbeat if exists
+      if (this.presenceHeartbeat) {
+        clearInterval(this.presenceHeartbeat);
+      }
+
+      // Set up heartbeat to update lastSeen every 20 seconds
+      this.presenceHeartbeat = setInterval(() => {
+        if (this.inMemoryPresence[listId] && this.inMemoryPresence[listId][auth.userData.uid]) {
+          this.inMemoryPresence[listId][auth.userData.uid].lastSeen = Date.now();
+          this.updateActiveUsersFromMemory(listId);
+          
+          // Broadcast sync to other tabs
+          this.broadcastPresenceSync(listId);
+        }
+      }, 20000);
+
+      return null;
+    },
+
+    updateActiveUsersFromMemory(listId) {
+      if (!this.inMemoryPresence[listId]) {
+        this.activeUsers[listId] = [];
+        this.presenceUpdateTime = Date.now();
+        return;
+      }
+
+      const now = Date.now();
+      const activeUsers = [];
+      const auth = useAuthStore();
+      const currentUserUid = auth.userData.uid;
+      
+      // Filter users and remove stale ones - exclude current user
+      Object.entries(this.inMemoryPresence[listId]).forEach(([uid, user]) => {
+        if (uid === currentUserUid) {
+          // Skip current user
+          return;
+        }
+        if (now - user.lastSeen < 60000) {
+          // User is still active
+          activeUsers.push(user);
+        } else {
+          // User is stale - remove from memory
+          delete this.inMemoryPresence[listId][uid];
+        }
+      });
+
+      this.activeUsers[listId] = activeUsers;
+      this.presenceUpdateTime = Date.now(); // Trigger reactivity
+    },
+
+    startCleanupInterval() {
+      // Clean up stale presence data every 5 seconds (shorter interval for better sync)
+      if (this.cleanupInterval) {
+        clearInterval(this.cleanupInterval);
+      }
+
+      this.cleanupInterval = setInterval(async () => {
+        const now = Date.now();
+        let hasChanges = false;
+        
+        // Check all lists for stale users
+        Object.keys(this.inMemoryPresence).forEach(async (listId) => {
+          Object.entries(this.inMemoryPresence[listId]).forEach(async ([uid, user]) => {
+            if (now - user.lastSeen >= 60000) {
+              delete this.inMemoryPresence[listId][uid];
+              hasChanges = true;
+              
+              // Also try to remove from Firestore
+              try {
+                const presenceRef = doc(db, "presence", listId, "users", uid);
+                await deleteDoc(presenceRef);
+              } catch (error) {
+                // Silently fail if Firestore delete fails
+              }
+            }
+          });
+          
+          // Update activeUsers for this list if changes detected
+          if (hasChanges) {
+            this.updateActiveUsersFromMemory(listId);
+          }
+        });
+      }, 5000);  // Run every 5 seconds instead of 30
+    },
+
+    stopCleanupInterval() {
+      if (this.cleanupInterval) {
+        clearInterval(this.cleanupInterval);
+        this.cleanupInterval = null;
+      }
+    },
+
+    initPresenceBroadcast() {
+      if (typeof BroadcastChannel !== 'undefined') {
+        this.presenceBroadcast = new BroadcastChannel('presence_sync');
+        
+        this.presenceBroadcast.onmessage = (event) => {
+          const { type, listId, uid, userIds } = event.data;
+          
+          if (type === 'user_left') {
+            // Initialize list if not exists
+            if (!this.inMemoryPresence[listId]) {
+              this.inMemoryPresence[listId] = {};
+            }
+            // User left a list - remove them
+            if (this.inMemoryPresence[listId][uid]) {
+              delete this.inMemoryPresence[listId][uid];
+            }
+            this.updateActiveUsersFromMemory(listId);
+          } else if (type === 'user_joined') {
+            // User joined - just trigger update
+            if (!this.inMemoryPresence[listId]) {
+              this.inMemoryPresence[listId] = {};
+            }
+            this.updateActiveUsersFromMemory(listId);
+          } else if (type === 'sync') {
+            // Sync message with user list - check and remove users not in the list
+            if (!this.inMemoryPresence[listId]) {
+              this.inMemoryPresence[listId] = {};
+            }
+            
+            // Remove users not in the sync list
+            Object.keys(this.inMemoryPresence[listId]).forEach(existingUid => {
+              if (!userIds.includes(existingUid)) {
+                delete this.inMemoryPresence[listId][existingUid];
+              }
+            });
+            
+            this.updateActiveUsersFromMemory(listId);
+          }
+        };
+      }
+    },
+
+    closePresenceBroadcast() {
+      if (this.presenceBroadcast) {
+        this.presenceBroadcast.close();
+        this.presenceBroadcast = null;
+      }
+    },
+
+    broadcastPresenceChange(type, listId, uid) {
+      if (this.presenceBroadcast) {
+        try {
+          // Only send basic serializable data
+          this.presenceBroadcast.postMessage({
+            type,
+            listId,
+            uid,
+            timestamp: Date.now()
+          });
+        } catch (error) {
+          // Broadcast failed, but operation continues
+        }
+      }
+    },
+
+    broadcastPresenceSync(listId) {
+      if (this.presenceBroadcast && this.inMemoryPresence[listId]) {
+        try {
+          // Send sync message with all users for this list
+          const userIds = Object.keys(this.inMemoryPresence[listId]);
+          this.presenceBroadcast.postMessage({
+            type: 'sync',
+            listId,
+            userIds,
+            timestamp: Date.now()
+          });
+        } catch (error) {
+          // Broadcast failed, but operation continues
+        }
+      }
+    },
+
+    // Remove user presence when leaving list
+    async removeUserPresence(listId) {
+      const auth = useAuthStore();
+      if (!auth.userData.uid) return;
+      
+      // Remove from in-memory presence
+      if (this.inMemoryPresence[listId]) {
+        delete this.inMemoryPresence[listId][auth.userData.uid];
+        this.updateActiveUsersFromMemory(listId);
+        console.log('✅ Updated activeUsers for old list:', listId);
+        
+        // Broadcast to other tabs
+        this.broadcastPresenceChange('user_left', listId, auth.userData.uid);
+      }
+      
+      // Clear heartbeat
+      if (this.presenceHeartbeat) {
+        clearInterval(this.presenceHeartbeat);
+        this.presenceHeartbeat = null;
+      }
+      
+      // Try to remove from Firestore (non-blocking)
+      try {
+        const presenceRef = doc(db, "presence", listId, "users", auth.userData.uid);
+        await deleteDoc(presenceRef);
+      } catch (error) {
+        console.warn('⚠️ Could not remove from Firestore presence:', error.code);
+      }
+    },
+
+    // Clean up old presence documents on app start
+    async cleanupStalePresenceDocuments(listId) {
+      try {
+        const usersRef = collection(db, "presence", listId, "users");
+        const snapshot = await getDocs(usersRef);
+        const now = new Date();
+        
+        snapshot.forEach(async (doc) => {
+          const userData = doc.data();
+          const lastSeen = userData.lastSeen?.toDate?.() || new Date(userData.lastSeen);
+          
+          // Remove documents older than 60 seconds
+          if (now - lastSeen > 60000) {
+            try {
+              await deleteDoc(doc.ref);
+              console.log('🗑️ Cleaned up stale presence document:', doc.id);
+            } catch (error) {
+              console.warn('⚠️ Could not delete stale document:', error.code);
+            }
+          }
+        });
+      } catch (error) {
+        console.warn('⚠️ Could not clean up presence documents:', error.code);
+      }
+    },
+    listenToPresence(listId) {
+      if (!listId) return;
+
+      // Clean up stale documents before listening
+      this.cleanupStalePresenceDocuments(listId);
+
+      // Remove old listener if exists
+      if (this.presenceUnsubscribe) {
+        this.presenceUnsubscribe();
+      }
+
+      try {
+        const usersRef = collection(db, "presence", listId, "users");
+        
+        this.presenceUnsubscribe = onSnapshot(usersRef, (snapshot) => {
+          // Update in-memory presence from Firestore
+          const fsUsers = {};
+          snapshot.forEach((doc) => {
+            const userData = doc.data();
+            const lastSeenDate = userData.lastSeen?.toDate?.() || new Date(userData.lastSeen);
+            fsUsers[userData.uid] = {
+              uid: userData.uid,
+              email: userData.email,
+              firstName: userData.firstName,
+              lastName: userData.lastName,
+              name: `${userData.firstName} ${userData.lastName}`,
+              lastSeen: lastSeenDate instanceof Date ? lastSeenDate.getTime() : lastSeenDate
+            };
+          });
+
+          // Merge Firestore users with in-memory presence
+          if (!this.inMemoryPresence[listId]) {
+            this.inMemoryPresence[listId] = {};
+          }
+          
+          Object.assign(this.inMemoryPresence[listId], fsUsers);
+          
+          // Update activeUsers
+          this.updateActiveUsersFromMemory(listId);
+        }, (error) => {
+          // Even if Firestore fails, in-memory presence still works
+          this.updateActiveUsersFromMemory(listId);
+        });
+      } catch (error) {
+        console.error('Error setting up presence listener:', error);
       }
     },
 

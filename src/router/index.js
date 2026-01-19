@@ -118,8 +118,6 @@ router.beforeEach(async (to, from, next) => {
   // await user.get();
   // const isLoggedIn = await auth.userData.isLoggedIn;
 
-  console.log("authStore.isLoggedIn sada je: ", auth.isLoggedIn); // user is defined
-
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     next({ name: "Login" });
     return;

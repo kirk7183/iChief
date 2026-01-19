@@ -5,6 +5,15 @@
       <div class="header-content">
         <h1>Moje Kupovne Liste</h1>
         <div class="header-actions">
+          <!-- Active Users Badge -->
+          <button 
+            v-if="activeUsersOnList.length > 0"
+            @click="showActiveUsersModal = true" 
+            class="active-users-badge"
+            :title="`${activeUsersOnList.length} korisnika na listi`"
+          >
+            👥 {{ activeUsersOnList.length }}
+          </button>
           <button @click="showInvitesModal = true" class="invites-btn" title="Pozivi">📧</button>
           <div class="select-wrapper">
             <label for="list">Izaberite listu:</label>
@@ -424,6 +433,33 @@
       </div>
     </div>
   </div>
+
+  <!-- ACTIVE USERS MODAL -->
+  <div v-if="showActiveUsersModal" class="modal-overlay" @click="closeActiveUsersModal">
+    <div class="modal" @click.stop>
+      <div class="modal-header">
+        <h3>👥 Aktivni korisnici na listi</h3>
+        <button @click="closeActiveUsersModal" class="close-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div v-if="activeUsersOnList.length === 0" class="no-users">
+          <p>Trenutno nema drugih korisnika na listi.</p>
+        </div>
+        <div v-else class="users-list">
+          <div v-for="user in activeUsersOnList" :key="user.uid" class="user-item">
+            <div class="user-info">
+              <p class="user-name">{{ user.name }}</p>
+              <p class="user-email">{{ user.email }}</p>
+            </div>
+            <span class="online-indicator">🟢 Aktivan</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeActiveUsersModal" class="btn btn-primary">Zatvori</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -432,7 +468,7 @@ import { useMarketListStore } from "@/stores/market-list-store.js";
 import { watch } from "vue";
 import { storeToRefs } from "pinia";
 import ItemsCrud from "@/components/market-list/items-crud.vue";
-import { onMounted, onUnmounted, ref, reactive, computed, nextTick } from "vue";
+import { onMounted, onUnmounted, onBeforeUnmount, ref, reactive, computed, nextTick } from "vue";
 import { useAuthStore } from "@/stores/auth-store";
 import { useLoaderStore } from "@/stores/loader-store";
 import { doc, updateDoc, getDoc } from "@/firebase/firebase.js";
@@ -452,6 +488,7 @@ const showMenu = ref(false);
 const showInfoModal = ref(false);
 const showShareModal = ref(false);
 const showInvitesModal = ref(false);
+const showActiveUsersModal = ref(false);
 const localSharedWith = ref([]);
 const originalSharedWith = ref([]);
 const userNames = ref({});
@@ -460,6 +497,10 @@ const currentList = computed(() => {
     return market_list.lists.find(list => list.id === market_list.selectedList) || null;
   }
   return null;
+});
+const activeUsersOnList = computed(() => {
+  if (!market_list.selectedList) return [];
+  return market_list.activeUsers[market_list.selectedList] || [];
 });
 const pendingInvites = ref([]);
 
@@ -486,6 +527,46 @@ watch(showAddForm, (newShowAddForm) => {
     editingId.value = "";
   }
 });
+
+// Watch for selected list changes - set up presence tracking
+watch(() => selectedList.value, async (newListId, oldListId) => {
+  console.log('📋 List changed from', oldListId, 'to', newListId);
+  
+  // Remove presence from old list
+  if (oldListId) {
+    await market_list.removeUserPresence(oldListId);
+  }
+  
+  // Set presence and listen to active users on new list
+  if (newListId) {
+    console.log('🔧 Setting up presence for new list:', newListId);
+    await market_list.setUserPresence(newListId);
+    market_list.listenToPresence(newListId);
+
+    // Set up activity listener with throttling - update presence max every 10 seconds
+    const handleActivity = () => {
+      const now = Date.now();
+      if (now - market_list.lastActivityTime > 10000) {
+        market_list.lastActivityTime = now;
+        market_list.setUserPresence(newListId);
+      }
+    };
+
+    // Listen for user activity
+    document.addEventListener('click', handleActivity);
+    document.addEventListener('keydown', handleActivity);
+
+    // Clean up on component unmount or list change
+    const cleanup = () => {
+      document.removeEventListener('click', handleActivity);
+      document.removeEventListener('keydown', handleActivity);
+    };
+
+    // Store cleanup function for later use
+    market_list.activityCleanup = cleanup;
+  }
+});
+
 const selectedInfo = ref("");
 const showConfirmModal = ref(false);
 const confirmTitle = ref("");
@@ -784,8 +865,32 @@ onMounted(async () => {
     await market_list.fetchLists();
     market_list.realTimeListeners();
     
+    // Start cleanup interval for presence tracking
+    market_list.startCleanupInterval();
+    
+    // Initialize cross-tab presence sync
+    market_list.initPresenceBroadcast();
+    
+    // Wait for DOM to update after fetchLists
+    await nextTick();
+    
     if (market_list.selectedList) {
       await market_list.fetchItemsFields();
+      
+      // Set up presence tracking if list is already selected
+      await market_list.setUserPresence(market_list.selectedList);
+      market_list.listenToPresence(market_list.selectedList);
+
+      // Set up activity listener
+      const handleActivity = () => {
+        market_list.setUserPresence(market_list.selectedList);
+      };
+      document.addEventListener('click', handleActivity);
+      document.addEventListener('keydown', handleActivity);
+      market_list.activityCleanup = () => {
+        document.removeEventListener('click', handleActivity);
+        document.removeEventListener('keydown', handleActivity);
+      };
     }
     document.addEventListener('click', handleClickOutside);
     
@@ -828,6 +933,27 @@ onMounted(async () => {
   nextTick(() => {
     setCustomValidationMessages();
   });
+});
+
+onBeforeUnmount(async () => {
+  // Clean up presence tracking and activity listeners
+  if (market_list.selectedList) {
+    await market_list.removeUserPresence(market_list.selectedList);
+  }
+  
+  // Clean up activity listeners
+  if (market_list.activityCleanup) {
+    market_list.activityCleanup();
+  }
+  
+  // Stop cleanup interval
+  market_list.stopCleanupInterval();
+  
+  // Close presence broadcast
+  market_list.closePresenceBroadcast();
+  
+  // Remove click outside listener
+  document.removeEventListener('click', handleClickOutside);
 });
 
 // Sharing functions
@@ -1044,6 +1170,10 @@ const closeInvitesModal = () => {
   showInvitesModal.value = false;
 };
 
+const closeActiveUsersModal = () => {
+  showActiveUsersModal.value = false;
+};
+
 const acceptInvite = async (code) => {
   try {
     await market_list.acceptInvite(code);
@@ -1196,7 +1326,6 @@ watch(
     };
   },
   (newValue, oldValue) => {
-    console.log('[WATCHER] List state changed - new:', newValue, 'old:', oldValue);
     if (newValue.listId && newValue.sharedFrom !== oldValue?.sharedFrom) {
       console.log('[WATCHER] sharedFrom changed from', oldValue?.sharedFrom, 'to', newValue.sharedFrom);
       console.log('[WATCHER] Refreshing items due to sharedFrom change...');
@@ -1219,7 +1348,6 @@ watch(currentFilter, (newFilter) => {
 // Update localSharedWith when currentList.sharedWith changes
 // Watcher for real-time updates to sharedWith (but not when opening modal)
 watch(() => currentList.value?.sharedWith, async (newSharedWith) => {
-  console.log('sharedWith changed:', newSharedWith, 'showShareModal:', showShareModal.value);
   if (ignoreNextWatcher) {
     ignoreNextWatcher = false;
     return;
@@ -2684,6 +2812,73 @@ const toggleCompleted = async (item, ev) => {
       line-height: 1.6;
       margin: 0;
     }
+  }
+
+  .users-list {
+    display: flex;
+    flex-direction: column;
+    gap: $space-md;
+  }
+
+  .user-item {
+    padding: $space-md;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f5f5f5;
+
+    .user-info {
+      flex: 1;
+
+      .user-name {
+        font-weight: $fw-medium;
+        margin: 0 0 $space-xs 0;
+        color: $text-primary;
+      }
+
+      .user-email {
+        font-size: $fs-sm;
+        color: $text-secondary;
+        margin: 0;
+      }
+    }
+
+    .online-indicator {
+      font-size: 0.9rem;
+      white-space: nowrap;
+      margin-left: $space-md;
+      color: #4caf50;
+      font-weight: $fw-medium;
+    }
+  }
+
+  .no-users {
+    text-align: center;
+    padding: $space-lg;
+    color: $text-secondary;
+  }
+}
+
+.active-users-badge {
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+  color: white;
+  border: none;
+  padding: $space-sm $space-md;
+  border-radius: $radius-sm;
+  font-size: $fs-base;
+  font-weight: $fw-medium;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 }
 </style>
