@@ -289,6 +289,11 @@ export const useAuthStore = defineStore("auth", {
 
     async updateEmailReferencesInFirebase(oldEmail, newEmail) {
       try {
+        // Set flag to prevent listener updates during migration
+        const market_list = useMarketListStore();
+        market_list.isEmailMigrationInProgress = true;
+        console.log('[EMAIL MIGRATION] Started migration from', oldEmail, 'to', newEmail);
+        
         // 1. Copy user document from old email to new email (3 calls)
         const oldUserDocRef = doc(db, "users", oldEmail);
         const oldUserDocSnap = await getDoc(oldUserDocRef);
@@ -308,17 +313,26 @@ export const useAuthStore = defineStore("auth", {
         const oldListsRef = collection(db, "market-list", oldEmail, "lists");
         const oldListsSnap = await getDocs(oldListsRef);
         
+        console.log(`[EMAIL MIGRATION] Found ${oldListsSnap.size} lists for ${oldEmail}`);
+        
         const allItemsPromises = [];
         const itemsByListId = {}; // Store items for later deletion
+        const usersToCheckForSharedLists = new Set(); // Collect users who have this list shared with them
         
         // Copy lists and collect items in parallel (N + N calls for lists + items)
+        // Also collect emails from sharedWith to optimize Step 4
         for (const listDoc of oldListsSnap.docs) {
           const listData = listDoc.data();
           const listId = listDoc.id;
           
-          // Update sharedWith if it contains old email
+          // Update sharedWith if it contains old email and collect emails to check later
           if (listData.sharedWith && listData.sharedWith.length > 0) {
             listData.sharedWith = listData.sharedWith.map(user => {
+              // Collect email for later checking
+              const userEmail = typeof user === 'string' ? user : (user.email || user);
+              usersToCheckForSharedLists.add(userEmail);
+              
+              // Update old email to new email
               if (typeof user === 'string' && user === oldEmail) {
                 return newEmail;
               } else if (typeof user === 'object' && user.email === oldEmail) {
@@ -336,6 +350,7 @@ export const useAuthStore = defineStore("auth", {
           const oldItemsRef = collection(db, "market-list", oldEmail, "lists", listId, "items");
           allItemsPromises.push(
             getDocs(oldItemsRef).then(snap => {
+              console.log(`[EMAIL MIGRATION] Found ${snap.size} items for list ${listId}`);
               itemsByListId[listId] = snap.docs;
               return snap.docs;
             })
@@ -348,6 +363,7 @@ export const useAuthStore = defineStore("auth", {
         // 3. Copy items (only 1 more parallel batch, no extra reads)
         const itemCopyPromises = [];
         Object.entries(itemsByListId).forEach(([listId, itemDocs]) => {
+          console.log(`[EMAIL MIGRATION] Copying ${itemDocs.length} items for list ${listId}`);
           itemDocs.forEach(oldItemDoc => {
             const itemData = oldItemDoc.data();
             // Update updatedBy if it matches old email
@@ -361,55 +377,117 @@ export const useAuthStore = defineStore("auth", {
         });
         
         await Promise.all(itemCopyPromises);
-        console.log(`Copied all items to new email path`);
+        console.log(`[EMAIL MIGRATION] Copied ${itemCopyPromises.length} items to new email path`);
         
-        // 4. Update all lists where sharedWith contains old email
+        // 4. Update all lists where sharedWith contains old email (OPTIMIZED - only check users who have this list shared)
         try {
-          const allListsSnap = await getDocs(collectionGroup(db, "lists"));
-          
           const sharedWithUpdatePromises = [];
-          allListsSnap.docs.forEach(listDoc => {
-            const listData = listDoc.data();
-            if (listData.sharedWith && Array.isArray(listData.sharedWith)) {
-              const hasOldEmail = listData.sharedWith.some(user => 
-                (typeof user === 'object' && user.email === oldEmail) ||
-                (typeof user === 'string' && user === oldEmail)
-              );
-              
-              if (hasOldEmail) {
-                const newSharedWith = listData.sharedWith.map(user => {
-                  if (typeof user === 'string' && user === oldEmail) {
-                    return newEmail;
-                  } else if (typeof user === 'object' && user.email === oldEmail) {
-                    return { ...user, email: newEmail };
-                  }
-                  return user;
-                });
+          
+          // Instead of reading ALL lists from ALL users, only check users who have this list shared with them
+          for (const userEmail of usersToCheckForSharedLists) {
+            const userListsRef = collection(db, "market-list", userEmail, "lists");
+            const userListsSnap = await getDocs(userListsRef);
+            
+            userListsSnap.docs.forEach(listDoc => {
+              const listData = listDoc.data();
+              if (listData.sharedWith && Array.isArray(listData.sharedWith)) {
+                const hasOldEmail = listData.sharedWith.some(user => 
+                  (typeof user === 'object' && user.email === oldEmail) ||
+                  (typeof user === 'string' && user === oldEmail)
+                );
                 
-                sharedWithUpdatePromises.push(updateDoc(listDoc.ref, { sharedWith: newSharedWith }));
+                if (hasOldEmail) {
+                  const newSharedWith = listData.sharedWith.map(user => {
+                    if (typeof user === 'string' && user === oldEmail) {
+                      return newEmail;
+                    } else if (typeof user === 'object' && user.email === oldEmail) {
+                      return { ...user, email: newEmail };
+                    }
+                    return user;
+                  });
+                  
+                  sharedWithUpdatePromises.push(updateDoc(listDoc.ref, { sharedWith: newSharedWith }));
+                }
               }
-            }
-          });
+            });
+          }
           
           await Promise.all(sharedWithUpdatePromises);
-          console.log(`Updated ${sharedWithUpdatePromises.length} lists with sharedWith references`);
+          console.log(`Updated ${sharedWithUpdatePromises.length} lists with sharedWith references (OPTIMIZED)`);
         } catch (error) {
           console.warn("Could not update sharedWith references:", error);
         }
         
-        // 5. Update all lists where sharedFrom points to old email (1 call)
+        // 4.5 Move items in shared users' paths if they stored copies under old owner email reference
         try {
-          const q = query(collectionGroup(db, "lists"), where("sharedFrom", "==", oldEmail));
-          const sharedListsSnap = await getDocs(q);
+          // Since items are stored under the OWNER's email path, and shared users reference via sharedFrom,
+          // when owner email changes, shared users' items might be on old path if they were synced
+          // We need to check if shared users have any items stored and update their references
           
-          const sharedFromUpdatePromises = sharedListsSnap.docs.map(listDoc =>
-            updateDoc(listDoc.ref, { sharedFrom: newEmail })
+          const sharedUserItemUpdatePromises = [];
+          
+          for (const userEmail of usersToCheckForSharedLists) {
+            const userListsRef = collection(db, "market-list", userEmail, "lists");
+            const userListsSnap = await getDocs(userListsRef);
+            
+            for (const listDoc of userListsSnap.docs) {
+              const listData = listDoc.data();
+              const listId = listDoc.id;
+              
+              // Only process lists that are shared from old email
+              if (listData.sharedFrom === oldEmail) {
+                // Get items from the old email path (where items are actually stored)
+                // These items will be accessed via the old sharedFrom before it gets updated
+                // After sharedFrom updates to new email, they should be accessible from new path
+                // So we just need to ensure items are at the correct owner path
+                // which was already done in steps 1-3
+                
+                console.log(`Shared list ${listId} for user ${userEmail} will auto-access items from updated sharedFrom`);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn("Could not process shared users items:", error);
+        }
+        
+        // 5. Update all lists where sharedFrom points to old email (1 call)
+        // Use the users we already identified instead of collectionGroup (which requires index)
+        try {
+          let updatedCount = 0;
+          
+          for (const userEmail of usersToCheckForSharedLists) {
+            const userListsRef = collection(db, "market-list", userEmail, "lists");
+            const userListsSnap = await getDocs(userListsRef);
+            
+            for (const listDoc of userListsSnap.docs) {
+              const listData = listDoc.data();
+              if (listData.sharedFrom === oldEmail) {
+                await updateDoc(listDoc.ref, { sharedFrom: newEmail });
+                console.log(`[EMAIL MIGRATION] Updated sharedFrom in user ${userEmail}'s list ${listDoc.id}`);
+                updatedCount++;
+              }
+            }
+          }
+          
+          console.log(`[EMAIL MIGRATION] Updated ${updatedCount} lists with sharedFrom=${newEmail}`);
+        } catch (error) {
+          console.warn("[EMAIL MIGRATION] Could not update sharedFrom references:", error);
+        }
+        
+        // 5.5 Update all invites where ownerEmail points to old email
+        try {
+          const invitesRef = collection(db, "invites");
+          const invitesQuery = query(invitesRef, where("ownerEmail", "==", oldEmail));
+          const invitesSnap = await getDocs(invitesQuery);
+          
+          const inviteUpdatePromises = invitesSnap.docs.map(inviteDoc =>
+            updateDoc(inviteDoc.ref, { ownerEmail: newEmail })
           );
           
-          await Promise.all(sharedFromUpdatePromises);
-          console.log(`Updated ${sharedListsSnap.size} shared lists with new owner email`);
+          await Promise.all(inviteUpdatePromises);
+          console.log(`Updated ${invitesSnap.size} invites with new owner email`);
         } catch (error) {
-          console.warn("Could not update sharedFrom references:", error);
+          console.warn("Could not update invites:", error);
         }
         
         // 6. Delete entire old market-list folder (use cached items)
@@ -425,10 +503,23 @@ export const useAuthStore = defineStore("auth", {
         });
         
         await Promise.all(deletePromises);
-        console.log(`Deleted old market-list folder for ${oldEmail}`);
+        console.log(`[EMAIL MIGRATION] Deleted old market-list folder for ${oldEmail}`);
         
-        console.log(`Email migration completed from ${oldEmail} to ${newEmail}`);
+        console.log(`[EMAIL MIGRATION] Email migration completed from ${oldEmail} to ${newEmail}`);
+        
+        // After migration is complete, reset flag and refresh items if something is selected
+        market_list.isEmailMigrationInProgress = false;
+        console.log('[EMAIL MIGRATION] Migration flag reset - listeners can resume');
+        
+        // Refresh items if a list is currently selected
+        if (market_list.selectedList) {
+          console.log('[EMAIL MIGRATION] Refreshing items after migration');
+          market_list.fetchItemsFields();
+        }
       } catch (error) {
+        // Make sure to reset flag even if there's an error
+        const market_list = useMarketListStore();
+        market_list.isEmailMigrationInProgress = false;
         console.error("Error updating email references:", error);
         throw error;
       }

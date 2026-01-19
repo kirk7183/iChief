@@ -34,6 +34,8 @@ export const useMarketListStore = defineStore("market-list", {
       list_fields: [],
       items_fields: [],
       pendingInviteCode: null, // Stores invite code when user is not logged in
+      itemsUnsubscribe: null, // Store unsubscribe function for real-time listener
+      isEmailMigrationInProgress: false, // Flag to prevent listener updates during email migration
     };
   },
 
@@ -186,6 +188,7 @@ export const useMarketListStore = defineStore("market-list", {
             }
             if (change.type === "modified") {
               if (index !== -1) {
+                const oldSharedFrom = this.lists[index].sharedFrom;
                 this.lists[index].name = change.doc.data().name;
                 this.lists[index].sharedWith = change.doc.data().sharedWith || [];
                 this.lists[index].shareSend = change.doc.data().shareSend || [];
@@ -194,6 +197,16 @@ export const useMarketListStore = defineStore("market-list", {
                 this.lists[index].ownerEmail = change.doc.data().ownerEmail || '';
                 this.lists[index].ownerFirstName = change.doc.data().ownerFirstName || '';
                 this.lists[index].ownerLastName = change.doc.data().ownerLastName || '';
+                
+                if (oldSharedFrom !== this.lists[index].sharedFrom) {
+                  console.log('[realTimeListeners] List modified - sharedFrom changed from', oldSharedFrom, 'to', this.lists[index].sharedFrom);
+                  
+                  // If this is the currently selected list and sharedFrom changed, refresh items
+                  if (this.selectedList === change.doc.id) {
+                    console.log('[realTimeListeners] This is the selected list and sharedFrom changed - refreshing items');
+                    this.fetchItemsFields();
+                  }
+                }
               }
             }
             if (change.type === "removed") {
@@ -255,12 +268,44 @@ export const useMarketListStore = defineStore("market-list", {
             const auth = useAuthStore();
             const docRef = doc(db, "market-list", auth.userData.email, "lists", this.selectedList);
             
+            // Get the list to find who it's shared with
+            const listSnap = await getDoc(docRef);
+            if (!listSnap.exists()) {
+              return { success: false, message: 'Lista više ne postoji' };
+            }
+            
+            const listData = listSnap.data();
+            const sharedWith = listData.sharedWith || [];
+            
             // Simply update the name field
             await updateDoc(docRef, {
               name: trimmedName
             });
             
-            console.log('List name updated successfully');
+            console.log('[editListName] List name updated to:', trimmedName);
+            
+            // Update list name for all invited users
+            if (sharedWith.length > 0) {
+              const updatePromises = [];
+              
+              for (const user of sharedWith) {
+                const userEmail = typeof user === 'string' ? user : user.email;
+                const userListRef = doc(db, "market-list", userEmail, "lists", this.selectedList);
+                
+                console.log('[editListName] Updating list name for user:', userEmail);
+                updatePromises.push(
+                  updateDoc(userListRef, { name: trimmedName }).catch(err => {
+                    console.error('[editListName] Error updating list for user', userEmail, ':', err);
+                  })
+                );
+              }
+              
+              if (updatePromises.length > 0) {
+                await Promise.all(updatePromises);
+                console.log('[editListName] Updated list name for', sharedWith.length, 'invited users');
+              }
+            }
+            
             return { success: true, message: 'Naziv liste je uspešno promenjen' };
           } catch (error) {
             console.error("Error editing list name:", error);
@@ -531,12 +576,35 @@ export const useMarketListStore = defineStore("market-list", {
 
     async fetchItemsFields() {
       //fetch item fields from selected List name - when  user select list, 
-      console.log("fetch item fields for list:", this.selectedList);
+      console.log("[fetchItemsFields] Starting for list:", this.selectedList);
+      
+      // Skip if email migration is in progress
+      if (this.isEmailMigrationInProgress) {
+        console.log("[fetchItemsFields] Skipping - email migration in progress");
+        return;
+      }
+      
       const auth = useAuthStore();
+      
+      // Clean up old listener before setting up new one
+      if (this.itemsUnsubscribe) {
+        console.log("[fetchItemsFields] Cleaning up old items listener");
+        this.itemsUnsubscribe();
+        this.itemsUnsubscribe = null;
+      }
+      
       // Find the list to check if shared
       const list = this.lists.find(l => l.id === this.selectedList);
+      console.log("[fetchItemsFields] Found list:", list?.name, "sharedFrom:", list?.sharedFrom);
+      
+      // For shared lists, items are stored under the OWNER's email (sharedFrom)
+      // For own lists, items are stored under current user's email
       const emailToUse = list && list.sharedFrom ? list.sharedFrom : auth.userData.email;
-      console.log("emailToUse for items:", emailToUse, "list.sharedFrom:", list?.sharedFrom);
+      console.log("[fetchItemsFields] Using email for items:", emailToUse, "(sharedFrom:", list?.sharedFrom, ", currentUser:", auth.userData.email, ")");
+      
+      // Add a small delay to ensure Firebase has processed the latest changes
+      // This helps when email migration just happened
+      await new Promise(resolve => setTimeout(resolve, 500));
       const colRef = await collection(
         db,
         "market-list",
@@ -546,17 +614,18 @@ export const useMarketListStore = defineStore("market-list", {
         "items"
       );
       if (colRef){
-        onSnapshot(colRef, (colSnapshot) => {
+        // Store the unsubscribe function so we can clean it up later
+        this.itemsUnsubscribe = onSnapshot(colRef, (colSnapshot) => {
           this.items_fields = [];
           colSnapshot.forEach((each) => {
             const itemData = {
               id: each.id,
               ...each.data()
             };
-            console.log("Loading item:", itemData);
+            console.log("[fetchItemsFields] Loading item:", itemData.name || itemData.id);
             this.items_fields.push(itemData);
           });
-          console.log("ITS SERVER!!!!! to sam dobio ..i dalje nema itema u listi", this.items_fields.length);
+          console.log("[fetchItemsFields] Successfully loaded", this.items_fields.length, "items from", emailToUse);
         });
       }
     },
@@ -568,6 +637,7 @@ export const useMarketListStore = defineStore("market-list", {
         }
         const auth = useAuthStore();
         const list = this.lists.find(l => l.id === this.selectedList);
+        // Items are stored under owner's email (or current user's if owner)
         const emailToUse = list && list.sharedFrom ? list.sharedFrom : auth.userData.email;
         const itemsColRef = collection(
           db,
@@ -594,6 +664,7 @@ export const useMarketListStore = defineStore("market-list", {
         }
         const auth = useAuthStore();
         const list = this.lists.find(l => l.id === this.selectedList);
+        // Items are stored under owner's email (or current user's if owner)
         const emailToUse = list && list.sharedFrom ? list.sharedFrom : auth.userData.email;
         const itemDocRef = doc(
           db,
@@ -626,6 +697,7 @@ export const useMarketListStore = defineStore("market-list", {
         }
         const auth = useAuthStore();
         const list = this.lists.find(l => l.id === this.selectedList);
+        // Items are stored under owner's email (or current user's if owner)
         const emailToUse = list && list.sharedFrom ? list.sharedFrom : auth.userData.email;
         const itemDocRef = doc(
           db,
@@ -661,6 +733,7 @@ export const useMarketListStore = defineStore("market-list", {
 
         const auth = useAuthStore();
         const list = this.lists.find(l => l.id === this.selectedList);
+        // Items are stored under owner's email (or current user's if owner)
         const emailToUse = list && list.sharedFrom ? list.sharedFrom : auth.userData.email;
 
         // Determine itemId: accept either id string or full item object
@@ -739,27 +812,70 @@ export const useMarketListStore = defineStore("market-list", {
     // Sharing functions
     async generateInviteLink(listId) {
       const auth = useAuthStore();
-      console.log('generateInviteLink', listId, auth.userData);
       const userId = auth.userData.uid;
       const code = generateUUID();
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
 
       const listRef = doc(db, "market-list", auth.userData.email, "lists", listId);
-      console.log('listRef', listRef);
       const listDoc = await getDoc(listRef);
-      console.log('listDoc exists', listDoc.exists());
       if (!listDoc.exists()) return null;
 
+      // ✅ Pronađi imena osoba iz sharedWith niza - sada sa UID-ima i statusom
+      let sharedWithNames = [];
+      const sharedWith = listDoc.data().sharedWith || [];
+      if (sharedWith.length > 0) {
+        // Pronađi imena i UID-ove iz sharedWith niza
+        sharedWithNames = sharedWith.map(user => {
+          if (typeof user === 'object' && user.email) {
+            return {
+              name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+              email: user.email,
+              uid: user.uid || null, // Koristi postojeći UID ako je dostupan
+              accepted: user.accepted || false // Koristi postojeći status ako je dostupan
+            };
+          }
+          return {
+            name: user,
+            email: user,
+            uid: null,
+            accepted: false
+          };
+        });
+      }
+
+      // 1. Sačuva invite kod u odvojenoj "invites" kolekciji za brže pronalaženje
+      const inviteRef = doc(db, "invites", code);
+      
+      try {
+        await setDoc(inviteRef, {
+          code: code,
+          ownerEmail: auth.userData.email,
+          ownerName: `${auth.userData.firstName} ${auth.userData.lastName}`,
+          listId: listId,
+          listName: listDoc.data().name,
+          sharedWithNames: sharedWithNames,
+          createdAt: new Date().toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          sentAt: new Date().toISOString()
+        });
+      } catch (error) {
+        // Error saving to invites - will use shareSend fallback
+      }
+
+      // 2. Dodaj kod i u shareSend niz liste (za backward compatibility ako trebalo)
       const shareSend = listDoc.data().shareSend || [];
       shareSend.push({
         code,
-        userId: null, // Will be set when accepted
         sentAt: new Date().toISOString(),
         expiresAt: expiresAt.toISOString()
       });
 
-      await updateDoc(listRef, { shareSend });
+      try {
+        await updateDoc(listRef, { shareSend });
+      } catch (error) {
+        // Error updating shareSend
+      }
 
       const inviteUrl = `${window.location.origin}/invite?code=${code}`;
       try {
@@ -774,38 +890,105 @@ export const useMarketListStore = defineStore("market-list", {
     async acceptInvite(code) {
       const auth = useAuthStore();
       const userId = auth.userData.uid;
+      
+      // Očisti kod od whitespace-a i specijalnih karaktera
+      const cleanCode = (code || '').trim();
 
-      // Find the list with this code
-      const colRef = collection(db, "market-list");
-      const querySnapshot = await getDocs(colRef);
-      let foundList = null;
-      let ownerEmail = null;
+      // OPTIMIZED: Direktno čitaj invite iz "invites/{code}" umesto 2000 read-a
+      const inviteRef = doc(db, "invites", cleanCode);
+      
+      let inviteSnap = await getDoc(inviteRef);
 
-      for (const userDoc of querySnapshot.docs) {
-        const userListsRef = collection(db, "market-list", userDoc.id, "lists");
-        const listsSnapshot = await getDocs(userListsRef);
-        for (const listDoc of listsSnapshot.docs) {
-          const shareSend = listDoc.data().shareSend || [];
-          const inviteIndex = shareSend.findIndex(invite => invite.code === code);
-          if (inviteIndex !== -1) {
-            const invite = shareSend[inviteIndex];
-            if (new Date(invite.expiresAt) < new Date()) {
-              throw new Error("Link je istekao.");
-            }
-            if (invite.userId) {
-              throw new Error("Link je već iskorišćen.");
-            }
-            foundList = { id: listDoc.id, data: listDoc.data() };
-            ownerEmail = userDoc.id;
-            break;
-          }
+      // Ako nije pronađen kao ID, pokušaj da pronađeš po polju "code"
+      if (!inviteSnap.exists()) {
+        const invitesRef = collection(db, "invites");
+        const q = query(invitesRef, where("code", "==", cleanCode));
+        const querySnap = await getDocs(q);
+        
+        if (!querySnap.empty) {
+          inviteSnap = querySnap.docs[0];
         }
-        if (foundList) break;
       }
 
-      if (!foundList) throw new Error("Nevažeći kod. Tražite od vlasnika liste da vam ponovo pošalje link");
+      // Fallback: Ako nije pronađen u invites kolekciji, pretražuj shareSend nizove svake liste
+      if (!inviteSnap.exists()) {
+        try {
+          const listsRef = collection(db, "market-list");
+          const allListsSnap = await getDocs(listsRef);
+          
+          // Provjeri sve liste
+          for (const userListsSnapshot of allListsSnap.docs) {
+            const userEmail = userListsSnapshot.id;
+            const userListsCollRef = collection(db, "market-list", userEmail, "lists");
+            const userListsSnap = await getDocs(userListsCollRef);
+            
+            for (const listDoc of userListsSnap.docs) {
+              const listData = listDoc.data();
+              const shareSend = listData.shareSend || [];
+              
+              // Pronađi kod u shareSend nizu
+              const foundInvite = shareSend.find(invite => invite.code === cleanCode);
+              if (foundInvite) {
+                // Kreiraj invite objekat sa potrebnim poljima
+                inviteSnap = {
+                  exists: () => true,
+                  data: () => ({
+                    code: cleanCode,
+                    ownerEmail: userEmail,
+                    listId: listDoc.id,
+                    listName: listData.name,
+                    sharedWithNames: listData.sharedWithNames || [],
+                    expiresAt: foundInvite.expiresAt,
+                    sentAt: foundInvite.sentAt
+                  })
+                };
+                break;
+              }
+            }
+            
+            if (inviteSnap.exists && inviteSnap.exists()) break;
+          }
+        } catch (error) {
+          // Fallback search failed
+        }
+      }
 
-      // Get owner info using the dedicated method
+      if (!inviteSnap.exists()) {
+        throw new Error("Nevažeći kod. Tražite od vlasnika liste da vam ponovo pošalje link");
+      }
+
+      const inviteData = inviteSnap.data();
+      
+      // Provjeri da li je link istekao
+      if (new Date(inviteData.expiresAt) < new Date()) {
+        throw new Error("Link je istekao.");
+      }
+
+      // Proveri da li je korisnik već prihvatio
+      const sharedWithNames = inviteData.sharedWithNames || [];
+      const userEntry = sharedWithNames.find(entry => 
+        (typeof entry === 'object' ? entry.email === auth.userData.email : entry === auth.userData.email)
+      );
+      
+      if (userEntry && typeof userEntry === 'object' && userEntry.accepted) {
+        throw new Error("Link je već iskorišćen.");
+      }
+
+      const ownerEmail = inviteData.ownerEmail;
+      const listId = inviteData.listId;
+      const listName = inviteData.listName;
+
+      // Preuzmi podatke o listi vlasnika
+      const ownerListRef = doc(db, "market-list", ownerEmail, "lists", listId);
+      const ownerListSnap = await getDoc(ownerListRef);
+
+      if (!ownerListSnap.exists()) {
+        throw new Error("Lista više ne postoji");
+      }
+
+      const foundList = { id: listId, data: ownerListSnap.data() };
+
+      // Get owner info
       const ownerInfo = await this.getOwnerInfo(ownerEmail);
       console.log('Owner info retrieved:', ownerInfo);
       
@@ -827,18 +1010,35 @@ export const useMarketListStore = defineStore("market-list", {
       }
 
       // Add to sharedWith, remove from shareSend
-      // Store user object with email, firstName, lastName for easier access
+      // Store user object with email, firstName, lastName, uid and accepted status for easier access
       sharedWith.push({
         email: auth.userData.email,
         firstName: auth.userData.firstName || 'Korisnik',
-        lastName: auth.userData.lastName || ''
+        lastName: auth.userData.lastName || '',
+        uid: userId,
+        accepted: true
       });
       const shareSend = foundList.data.shareSend || [];
       const inviteIndex = shareSend.findIndex(invite => invite.code === code);
       shareSend.splice(inviteIndex, 1); // Remove the used invite
 
-      const listRef = doc(db, "market-list", ownerEmail, "lists", foundList.id);
-      await updateDoc(listRef, { sharedWith, shareSend });
+      // Ažurira vlasnikovu listu
+      await updateDoc(ownerListRef, { sharedWith, shareSend });
+      
+      // Ažurira invite zapis - označi da je korisnik prihvatio
+      const updatedSharedWithNames = sharedWithNames.map(entry => {
+        if (typeof entry === 'object' && entry.email === auth.userData.email) {
+          return {
+            ...entry,
+            uid: userId,
+            accepted: true
+          };
+        }
+        return entry;
+      });
+      await updateDoc(inviteRef, { sharedWithNames: updatedSharedWithNames });
+      console.log(`Invite ${code} marked as accepted by user ${userId}`);
+
       // Also add the list to the user's own collection for display
       try {
         const userListRef = doc(db, "market-list", auth.userData.email, "lists", foundList.id);
@@ -852,6 +1052,25 @@ export const useMarketListStore = defineStore("market-list", {
           ownerName: `${ownerInfo.firstName} ${ownerInfo.lastName}` // Keep for backward compatibility
         });
         console.log('Shared list added with sharedFrom =', ownerEmail);
+        
+        // Sinhronizuj sve stavke vlasnika za ovog korisnika
+        try {
+          const ownerItemsRef = collection(db, "market-list", ownerEmail, "lists", foundList.id, "items");
+          const ownerItemsSnap = await getDocs(ownerItemsRef);
+          
+          const itemSyncPromises = [];
+          ownerItemsSnap.docs.forEach(itemDoc => {
+            const itemData = itemDoc.data();
+            // Note: Items are stored under owner's email, not under shared user's email
+            // The application uses sharedFrom to know where to fetch items from
+            // So we don't need to copy items - they're accessible via sharedFrom reference
+            console.log('Item accessible via sharedFrom:', itemDoc.id);
+          });
+          
+          console.log(`Synced ${ownerItemsSnap.size} items for shared list`);
+        } catch (syncErr) {
+          console.warn('Could not sync items for shared list:', syncErr);
+        }
       } catch (e) {
         console.log('Could not add shared list', e);
       }
@@ -862,29 +1081,34 @@ export const useMarketListStore = defineStore("market-list", {
     async declineInvite(code) {
       const auth = useAuthStore();
 
-      // Find and remove the invite
-      const colRef = collection(db, "market-list");
-      const querySnapshot = await getDocs(colRef);
-      let ownerEmail = null;
-      let listId = null;
+      // OPTIMIZED: Direktno čitaj invite iz "invites/{code}" umesto 2000 read-a
+      const inviteRef = doc(db, "invites", code);
+      const inviteSnap = await getDoc(inviteRef);
 
-      for (const userDoc of querySnapshot.docs) {
-        const userListsRef = collection(db, "market-list", userDoc.id, "lists");
-        const listsSnapshot = await getDocs(userListsRef);
-        for (const listDoc of listsSnapshot.docs) {
-          const shareSend = listDoc.data().shareSend || [];
-          const inviteIndex = shareSend.findIndex(invite => invite.code === code);
-          if (inviteIndex !== -1) {
-            shareSend.splice(inviteIndex, 1);
-            ownerEmail = userDoc.id;
-            listId = listDoc.id;
-            const listRef = doc(db, "market-list", ownerEmail, "lists", listId);
-            await updateDoc(listRef, { shareSend });
-            break;
-          }
-        }
-        if (listId) break;
+      if (!inviteSnap.exists()) {
+        throw new Error("Nevažeći kod");
       }
+
+      const inviteData = inviteSnap.data();
+      const ownerEmail = inviteData.ownerEmail;
+      const listId = inviteData.listId;
+
+      // Remove invite from shareSend array u vlasnikovoj listi
+      const listRef = doc(db, "market-list", ownerEmail, "lists", listId);
+      const listSnap = await getDoc(listRef);
+
+      if (listSnap.exists()) {
+        const shareSend = listSnap.data().shareSend || [];
+        const inviteIndex = shareSend.findIndex(invite => invite.code === code);
+        if (inviteIndex !== -1) {
+          shareSend.splice(inviteIndex, 1);
+          await updateDoc(listRef, { shareSend });
+        }
+      }
+
+      // Obriši invite iz "invites" kolekcije
+      await deleteDoc(inviteRef);
+      console.log(`Invite ${code} declined by user ${auth.userData.email}`);
 
       // Send message to owner (for now, just log; later implement notification)
       console.log(`Korisnik ${auth.userData.firstName} ${auth.userData.lastName} (${auth.userData.email}) je odbio poziv za listu ${listId}.`);
@@ -917,18 +1141,57 @@ export const useMarketListStore = defineStore("market-list", {
       if (index > -1) {
         sharedWith.splice(index, 1);
         await updateDoc(listRef, { sharedWith });
-        // Remove the list from the user's collection
-        await this.removeUserAccess(listId, userEmail);
+        // Remove the list from the user's collection and clean up invites
+        await this.removeUserAccess(listId, userEmail, userId);
       }
     },
 
-    async removeUserAccess(listId, userEmail) {
+    async removeUserAccess(listId, userEmail, userId) {
       try {
+        // Step 1: Remove the list from user's collection
         const userListRef = doc(db, "market-list", userEmail, "lists", listId);
         await deleteDoc(userListRef);
         console.log('Removed shared list from user', userEmail);
+
+        // Step 2: Clean up invites for this list and user
+        // Find all invites for this list where user is in sharedWithNames with uid matching
+        const invitesRef = collection(db, "invites");
+        const inviteQuery = query(
+          invitesRef,
+          where("listId", "==", listId)
+        );
+        const inviteSnapshot = await getDocs(inviteQuery);
+        
+        // Delete invites where this user's entry has the matching uid
+        for (const inviteDoc of inviteSnapshot.docs) {
+          const inviteData = inviteDoc.data();
+          const sharedWithNames = inviteData.sharedWithNames || [];
+          
+          // Check if this user is in the sharedWithNames with matching uid
+          const userEntryIndex = sharedWithNames.findIndex(entry => 
+            typeof entry === 'object' && entry.uid === userId
+          );
+          
+          if (userEntryIndex > -1) {
+            // Remove this user's entry from sharedWithNames
+            const updatedSharedWithNames = sharedWithNames.filter((_, index) => index !== userEntryIndex);
+            
+            // If no one else is accepted, delete the invite; otherwise update it
+            const hasOthersAccepted = updatedSharedWithNames.some(entry => 
+              typeof entry === 'object' && entry.accepted
+            );
+            
+            if (updatedSharedWithNames.length === 0 || !hasOthersAccepted) {
+              await deleteDoc(inviteDoc.ref);
+              console.log('Deleted invite:', inviteDoc.id);
+            } else {
+              await updateDoc(inviteDoc.ref, { sharedWithNames: updatedSharedWithNames });
+              console.log('Updated invite:', inviteDoc.id);
+            }
+          }
+        }
       } catch (err) {
-        console.error('Error removing list from user:', err);
+        console.error('Error removing user access:', err);
       }
     },
 

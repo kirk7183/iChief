@@ -40,7 +40,7 @@
     </div>
 
     <!-- ADD ITEM BUTTON -->
-    <div v-if="selectedList" class="add-item-button">
+    <div v-if="selectedList && !showAddForm" class="add-item-button">
       <button @click="showAddForm = true" class="btn btn-success">
         ➕ Dodaj Stavku
       </button>
@@ -56,6 +56,7 @@
       <div class="items-header">
         <h2>Stavke na listi</h2>
         <div class="sort-buttons-compact">
+          <button @click="currentSort = 'time'" :class="currentSort === 'time' ? 'btn active' : 'btn'" title="Najnovije prvo">Najnovije</button>
           <button @click="currentSort = 'asc'" :class="currentSort === 'asc' ? 'btn active' : 'btn'" title="Sortiraj od A do Z">A-Z</button>
           <button @click="currentSort = 'desc'" :class="currentSort === 'desc' ? 'btn active' : 'btn'" title="Sortiraj od Z do A">Z-A</button>
         </div>
@@ -64,7 +65,7 @@
         <div v-for="(singleItem, index) in filteredItems" :key="index" class="item-card card" :class="{ 'edit-mode': editingId === singleItem.id }">
           <!-- CHECKBOX AT TOP LEFT -->
           <div class="item-header" :class="{ 'no-border': editingId === singleItem.id }">
-            <label v-if="editingId !== singleItem.id" class="checkbox-label">
+            <label v-if="editingId !== singleItem.id" class="checkbox-label" :class="{ 'no-quantity': !singleItem.amount }">
               <input 
                 type="checkbox" 
                 :checked="singleItem.completed"
@@ -94,6 +95,7 @@
                   <div class="form-group">
                     <label>Jedinica</label>
                       <select v-model="editForm.unit">
+                        <option value="-">-</option>
                         <option v-for="unit in UNITS" :key="unit" :value="unit">{{ unit }}</option>
                       </select>
                   </div>
@@ -116,7 +118,7 @@
                 <div class="item-header-row">
                   <div class="item-name-section">
                     <h3 class="item-name" :class="{ completed: singleItem.completed }">{{ singleItem.name }}</h3>
-                    <span class="item-quantity">{{ singleItem.amount }} {{ singleItem.unit }}</span>
+                    <span class="item-quantity" v-if="singleItem.amount">{{ singleItem.amount }}{{ singleItem.unit !== '-' ? ' ' + singleItem.unit : '' }}</span>
                   </div>
                   <button @click="debugDelete(singleItem)" class="btn-icon delete-btn" title="Obriši">×</button>
                 </div>
@@ -142,9 +144,9 @@
           
           <!--VIEW MODE COLLAPSED-->
           <div v-if="editingId !== singleItem.id && !expandedItems.has(singleItem.id)" class="item-details" @click="toggleExpanded(singleItem.id)">
-            <div class="detail-row">
+            <div class="detail-row" v-if="singleItem.amount">
               <span class="label">Količina:</span>
-              <span class="value">{{ singleItem.amount }} {{ singleItem.unit }}</span>
+              <span class="value">{{ singleItem.amount }}{{ singleItem.unit !== '-' ? ' ' + singleItem.unit : '' }}</span>
             </div>
             
             <div class="detail-row" v-if="singleItem.buyer">
@@ -368,7 +370,12 @@
             <input type="checkbox" :checked="true" @change="toggleShare(userId)" />
           </div>
         </div>
-        <button @click="sendInviteLink" class="btn btn-primary">Pošalji link liste</button>
+
+        <!-- Sekcija za slanje novog linka -->
+        <div class="send-invite-section">
+          <p v-if="hasChanges" class="warning-text">Trebate prvo da kliknete "Zapamti" da bi poslali link.</p>
+          <button @click="sendInviteLink" class="btn btn-primary" :disabled="hasChanges">Pošalji link liste</button>
+        </div>
       </div>
       <div class="modal-footer">
         <button @click="closeShareModal" class="btn btn-error">Otkaži</button>
@@ -498,7 +505,7 @@ const showInfoMessageModal = ref(false);
 const infoMessage = ref("");
 const showLinkCopiedModal = ref(false);
 const currentFilter = ref('all');
-const currentSort = ref('asc'); // 'asc' (A-Z), 'desc' (Z-A)
+const currentSort = ref('time'); // 'time' (newest first), 'asc' (A-Z), 'desc' (Z-A)
 const dropdownRef = ref(null);
 const allBtn = ref(null);
 const pendingBtn = ref(null);
@@ -682,7 +689,14 @@ const filteredItems = computed(() => {
   }
   
   // Apply sorting
-  if (currentSort.value === 'asc') {
+  if (currentSort.value === 'time') {
+    // Sort by timestamp - newest first (oldest at bottom)
+    items.sort((a, b) => {
+      const timeA = a.timestamp || 0;
+      const timeB = b.timestamp || 0;
+      return timeB - timeA; // Newest first
+    });
+  } else if (currentSort.value === 'asc') {
     items.sort((a, b) => a.name.localeCompare(b.name, 'sr-RS', { sensitivity: 'base' }));
   } else if (currentSort.value === 'desc') {
     items.sort((a, b) => b.name.localeCompare(a.name, 'sr-RS', { sensitivity: 'base' }));
@@ -707,7 +721,7 @@ const startEdit = (item) => {
   editingId.value = item.id;
   editForm.name = item.name || "";
   editForm.amount = item.amount || "";
-  editForm.unit = item.unit || "Kom";
+  editForm.unit = item.unit || "-";
   editForm.buyer = item.buyer || "";
   editForm.info = item.info || "";
 };
@@ -721,14 +735,19 @@ const saveEdit = async (itemId) => {
     showInfoMessage('Unesite naziv stavke');
     return;
   }
-  if (!editForm.amount || editForm.amount <= 0) {
-    showInfoMessage('Unesite količinu (mora biti veća od 0)');
+  
+  // Validacija: ako je količina uneta, mora biti odabrana jedinica mere
+  if (editForm.amount && editForm.unit === "-") {
+    showInfoMessage('Ako ste uneli količinu, morate odabrati jedinicu mere');
     return;
   }
-  if (!editForm.unit || !editForm.unit.trim()) {
-    showInfoMessage('Izaberite jedinicu mere');
+
+  // Validacija: ako je jedinica mere odabrana, mora biti uneta količina
+  if (editForm.unit !== "-" && !editForm.amount) {
+    showInfoMessage('Ako ste odabrali jedinicu mere, morate uneti i količinu');
     return;
   }
+  
   const payload = {
     name: editForm.name,
     amount: editForm.amount,
@@ -831,6 +850,46 @@ const shareListBtn = async () => {
       if (listIndex !== -1) {
         market_list.lists[listIndex].sharedWith = freshData.sharedWith || [];
         market_list.lists[listIndex].shareSend = freshData.shareSend || [];
+      }
+      
+      // Clean up old invites - refresh sharedWithNames in all invites for this list
+      try {
+        const invitesRef = collection(db, "invites");
+        const inviteQuery = query(invitesRef, where("listId", "==", selectedList.value));
+        const inviteSnapshot = await getDocs(inviteQuery);
+        
+        const sharedWith = freshData.sharedWith || [];
+        const invitesToUpdate = [];
+        
+        // Build updated sharedWithNames from current sharedWith
+        const updatedSharedWithNames = sharedWith.map(user => {
+          if (typeof user === 'object' && user.email) {
+            return {
+              name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+              email: user.email,
+              uid: user.uid || null,
+              accepted: user.accepted || false
+            };
+          }
+          return {
+            name: user,
+            email: user,
+            uid: null,
+            accepted: false
+          };
+        });
+        
+        // Update all invites with refreshed sharedWithNames
+        for (const inviteDoc of inviteSnapshot.docs) {
+          invitesToUpdate.push(updateDoc(inviteDoc.ref, { sharedWithNames: updatedSharedWithNames }));
+        }
+        
+        if (invitesToUpdate.length > 0) {
+          await Promise.all(invitesToUpdate);
+          console.log('Refreshed sharedWithNames in', invitesToUpdate.length, 'invites');
+        }
+      } catch (cleanupErr) {
+        console.error('Error cleaning up invites:', cleanupErr);
       }
     }
   } catch (err) {
@@ -941,14 +1000,39 @@ const saveShareChanges = async () => {
     });
   });
   
+  // Pronađi UID-ove za uklonjene korisnike
   for (const userId of removedUsers) {
-    // Extract email for removeUserAccess
     const userEmail = typeof userId === 'string' ? userId : userId.email;
-    await market_list.removeUserAccess(currentList.value.id, userEmail);
+    
+    // Pronađi UID iz kolekcije users
+    let userUID = null;
+    try {
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("uid", "==", userEmail));
+      let snapshot = await getDocs(q);
+      
+      // Ako nije pronađeno po UID, pokušaj po email ID-u (jer je email dokument ID)
+      if (snapshot.empty) {
+        const userDocRef = doc(db, "users", userEmail);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          userUID = userDocSnap.data().uid;
+        }
+      } else {
+        userUID = snapshot.docs[0].data().uid || snapshot.docs[0].id;
+      }
+    } catch (e) {
+      console.error('Error getting UID for', userEmail, ':', e);
+    }
+    
+    await market_list.removeUserAccess(currentList.value.id, userEmail, userUID);
   }
+  
   const auth = useAuthStore();
   const listRef = doc(db, "market-list", auth.userData.email, "lists", currentList.value.id);
   await updateDoc(listRef, { sharedWith: localSharedWith.value });
+  
+  console.log('[saveShareChanges] Changes saved - sharedWith updated');
   closeShareModal();
 };
 
@@ -1100,6 +1184,26 @@ watch(
       market_list.change_state("items_fields", []);
     }
   }
+);
+
+// Watch for changes in sharedFrom field of selected list (when owner email changes)
+watch(
+  () => {
+    const list = market_list.lists.find(l => l.id === market_list.selectedList);
+    return {
+      sharedFrom: list?.sharedFrom,
+      listId: list?.id
+    };
+  },
+  (newValue, oldValue) => {
+    console.log('[WATCHER] List state changed - new:', newValue, 'old:', oldValue);
+    if (newValue.listId && newValue.sharedFrom !== oldValue?.sharedFrom) {
+      console.log('[WATCHER] sharedFrom changed from', oldValue?.sharedFrom, 'to', newValue.sharedFrom);
+      console.log('[WATCHER] Refreshing items due to sharedFrom change...');
+      market_list.fetchItemsFields();
+    }
+  },
+  { deep: true }
 );
 
 // Focus active button when filter changes
@@ -1289,16 +1393,28 @@ const editItem = (itemId) => {
 
 const toggleCompleted = async (item, ev) => {
   const checked = ev.target.checked;
+  let loaderTimeout; // Timeout za lazy loading
+  
   try {
-    loader.startLoading();
+    // Pokreni loader tek ako operacija traje duže od 2 sekunde
+    loaderTimeout = setTimeout(() => {
+      loader.startLoading();
+    }, 2000); // 2000ms = 2 sekunde
+    
     await market_list.updateItemCompletion(item.id, checked);
+    
+    // Ako je završeno pre nego što je timeout istekao, ne prikaži loader
+    clearTimeout(loaderTimeout);
   } catch (e) {
     console.error('Error toggling completion', e);
     showInfoMessage('Greška pri promeni statusa itema');
+    clearTimeout(loaderTimeout);
   } finally {
+    clearTimeout(loaderTimeout); // Osiguraj se da je timeout očišćen
     loader.stopLoading();
   }
 };
+
 </script>
 
 <style scoped lang="scss">
@@ -1469,22 +1585,27 @@ const toggleCompleted = async (item, ev) => {
   .items-header {
     display: flex;
     justify-content: space-between;
+    flex-wrap: wrap;
     align-items: center;
+    margin-top: 40px;
     margin-bottom: $space-lg;
     gap: $space-md;
-
+    
     h2 {
       margin: 0;
       color: $text-primary;
       font-size: $fs-lg;
       flex: 1;
-
+      padding-right: 20px;
+      min-width: 170px;
+      
       @include md {
         font-size: $fs-xl;
       }
     }
-
+    
     .sort-buttons-compact {
+      margin-left: auto;
       display: flex;
       gap: $space-sm;
 
@@ -1574,6 +1695,10 @@ const toggleCompleted = async (item, ev) => {
       gap: $space-sm;
       cursor: pointer;
       user-select: none;
+
+      &.no-quantity {
+        padding-top: 6px;
+      }
 
       .item-checkbox {
         width: 24px;
@@ -2297,9 +2422,10 @@ const toggleCompleted = async (item, ev) => {
 
   .modal-body {
     margin-bottom: $space-lg;
-
+    
     .create-list-form {
       .form-group {
+        margin-top: $space-xl;
         label {
           display: block;
           margin-bottom: $space-xs;
@@ -2474,6 +2600,12 @@ const toggleCompleted = async (item, ev) => {
         align-items: center;
         padding: $space-sm;
         border-bottom: 1px solid $border-color;
+      }
+
+      .send-invite-section {
+        margin-top: $space-lg;
+        padding-top: $space-lg;
+        border-top: 1px solid $border-color;
       }
 
       .pending-invite-item {

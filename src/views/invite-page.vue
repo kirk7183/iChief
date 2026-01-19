@@ -47,15 +47,20 @@ const ownerName = ref('');
 const ownerEmail = ref('');
 
 const processInvite = async (code) => {
-  console.log('processInvite called with code:', code);
+  // Očisti kod od whitespace-a
+  const cleanCode = (code || '').trim();
+  
+  if (!cleanCode) {
+    error.value = 'Nevažeći kod.';
+    loading.value = false;
+    return;
+  }
+  
   try {
-    const result = await marketStore.acceptInvite(code);
-    console.log('acceptInvite result:', result);
+    const result = await marketStore.acceptInvite(cleanCode);
     
     // Fetch lists to update the store with the new shared list
-    console.log('Fetching lists...');
     await marketStore.fetchLists();
-    console.log('Lists fetched:', marketStore.lists);
     
     if (result.alreadyShared) {
       success.value = true;
@@ -67,7 +72,6 @@ const processInvite = async (code) => {
       ownerEmail.value = result.ownerInfo.email;
     }
   } catch (err) {
-    console.error('Error in processInvite:', err);
     error.value = err.message;
   } finally {
     loading.value = false;
@@ -77,8 +81,6 @@ const processInvite = async (code) => {
 onMounted(async () => {
   // Initial setup when page loads
   const code = router.currentRoute.value.query.code;
-  console.log('Invite page mounted, code:', code);
-  console.log('Full URL:', window.location.href);
 
   if (!code) {
     error.value = 'Nevažeći link.';
@@ -88,10 +90,8 @@ onMounted(async () => {
   }
 
   // Check if user is logged in
-  console.log('Is logged in:', authStore.userData.isLoggedIn);
   if (!authStore.userData.isLoggedIn) {
     // User is not logged in, save code for later
-    console.log('User not logged in, saving invite code for later');
     marketStore.setPendingInviteCode(code);
     isLoggedIn.value = false;
     loading.value = false;
@@ -107,12 +107,10 @@ onMounted(async () => {
 
 // Watch for code changes in URL and process invite
 watch(() => router.currentRoute.value.query.code, async (newCode) => {
-  console.log('Code in URL changed:', newCode);
   if (!newCode) return;
   
   // If user is logged in, process the invite
   if (authStore.userData.isLoggedIn) {
-    console.log('User is logged in, processing invite');
     isLoggedIn.value = true;
     loading.value = true;
     try {
@@ -122,7 +120,6 @@ watch(() => router.currentRoute.value.query.code, async (newCode) => {
     }
   } else {
     // If user is not logged in, just show the auth prompt
-    console.log('User is not logged in, showing auth prompt');
     isLoggedIn.value = false;
     loading.value = false;
   }

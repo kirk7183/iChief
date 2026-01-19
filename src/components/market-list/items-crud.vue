@@ -9,29 +9,31 @@
       <div class="form-group">
         <label for="name">Šta trebate kupiti? *</label>
         <input 
+          ref="nameInputRef"
           v-model="nameInput" 
           type="text" 
           id="name"
           placeholder="npr. Mleko, Hleb, Parametre..."
+          autofocus
           required
         />
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label for="amount">Količina *</label>
+          <label for="amount">Količina (opciono)</label>
           <input 
             v-model="amountInput" 
             type="number"
             id="amount"
             placeholder="npr. 2"
-            required
           />
         </div>
 
         <div class="form-group">
           <label for="unit">Jedinica mere *</label>
           <select id="unit" v-model="unitSelect">
+            <option value="-">-</option>
             <option v-for="unit in UNITS" :value="unit" :key="unit">
               {{ unit }}
             </option>
@@ -118,8 +120,9 @@ const props = defineProps({
 });
 
 const nameInput = ref("");
+const nameInputRef = ref(null);
 const amountInput = ref("");
-const unitSelect = ref("Kom");
+const unitSelect = ref("-");
 const infoInput = ref("");
 const buyerInput = ref("");
 const defaultBuyer = ref("");
@@ -436,6 +439,18 @@ const saveItem = async () => {
     return;
   }
 
+  // Validacija: ako je količina uneta, mora biti odabrana jedinica mere
+  if (amountInput.value && unitSelect.value === "-") {
+    showInfoMessage("Ako ste uneli količinu, morate odabrati jedinicu mere!");
+    return;
+  }
+
+  // Validacija: ako je jedinica mere odabrana, mora biti uneta količina
+  if (unitSelect.value !== "-" && !amountInput.value) {
+    showInfoMessage("Ako ste odabrali jedinicu mere, morate uneti i količinu!");
+    return;
+  }
+
   const itemData = {
     name: nameInput.value,
     amount: amountInput.value,
@@ -464,7 +479,7 @@ const showInfoMessage = (message) => {
 const clearForm = () => {
   nameInput.value = "";
   amountInput.value = "";
-  unitSelect.value = "Kom";
+  unitSelect.value = "-";
   infoInput.value = "";
   buyerInput.value = "";
 };
@@ -580,13 +595,12 @@ onMounted(async () => {
 .add-item-form {
   display: flex;
   flex-direction: column;
-  gap: $space-lg;
 }
 
 .form-row {
   display: grid;
   grid-template-columns: 1fr;
-  gap: $space-lg;
+  gap: $space-md;
 
   @include md {
     grid-template-columns: 1fr 1fr;
@@ -596,12 +610,13 @@ onMounted(async () => {
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: $space-sm;
+  gap: 0;
 
   label {
     font-weight: $fw-semibold;
     color: $text-primary;
     font-size: $fs-sm;
+    margin-bottom: 0;
   }
 
   input,
@@ -611,6 +626,7 @@ onMounted(async () => {
     border-radius: $radius-md;
     font-size: $fs-base;
     font-family: inherit;
+    height: 42px;
     transition: all $transition-fast;
 
     &:focus {
